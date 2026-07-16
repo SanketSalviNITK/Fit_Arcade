@@ -27,12 +27,35 @@
         <div style="display: flex; gap: 1rem; align-items: center;">
             <button id="btn-settings-open" class="btn-arcade pink" style="padding: 0.5rem 1rem; font-size: 0.65rem;">SETTINGS</button>
             <button id="btn-sound-toggle" class="btn-arcade yellow" style="padding: 0.5rem 1rem; font-size: 0.65rem;">Sound: ON</button>
-            <div style="font-family: var(--font-pixel); font-size: 0.7rem; color: var(--success-green); display: flex; align-items: center; gap: 0.4rem;">
-                <span class="status-dot" id="system-status-dot" style="background-color: var(--success-green); box-shadow: 0 0 8px var(--success-green);"></span>
-                <span id="system-status-text">SYSTEM ACTIVE</span>
+            <div style="font-family: var(--font-pixel); font-size: 0.7rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem;">
+                <span class="status-dot" id="system-status-dot" style="background-color: #666; box-shadow: none;"></span>
+                <span id="system-status-text">CAMERA OFF</span>
             </div>
         </div>
     </header>
+
+    <!-- First-run onboarding: gate the camera behind a clear, explained user action.
+         (Browsers only reliably show the camera prompt on a real click.) -->
+    <div id="welcome-overlay" class="modal-overlay active">
+        <div class="arcade-panel" style="max-width: 560px; width: 92%; text-align: center;">
+            <h1 class="arcade-title" style="font-size: 2rem; margin-bottom: 0.3rem;">FIT-ARCADE</h1>
+            <p style="color: var(--primary-cyan); font-family: var(--font-pixel); font-size: 0.68rem; letter-spacing: 1px; margin-bottom: 1.3rem;">YOUR BODY IS THE CONTROLLER</p>
+            <p style="color: #fff; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem;">
+                Play arcade games by really moving — jump, squat, punch, dodge. Your webcam reads
+                your motion (and even your heart rate). It's a workout that plays like a game.
+            </p>
+            <div style="display: flex; justify-content: center; gap: 1rem; margin-bottom: 1.6rem; flex-wrap: wrap; font-family: var(--font-pixel); font-size: 0.55rem; color: var(--primary-cyan);">
+                <div style="min-width: 92px;"><div style="font-size: 1.7rem; margin-bottom: 0.45rem;">📷</div>ALLOW<br>CAMERA</div>
+                <div style="min-width: 92px;"><div style="font-size: 1.7rem; margin-bottom: 0.45rem;">🧍</div>CALIBRATE<br>YOUR MOVES</div>
+                <div style="min-width: 92px;"><div style="font-size: 1.7rem; margin-bottom: 0.45rem;">🔥</div>PLAY &amp;<br>SWEAT</div>
+            </div>
+            <button id="btn-welcome-start" class="btn-arcade yellow" style="width: 100%; font-size: 0.9rem; padding: 0.9rem;" onclick="app.startExperience()">▶ ENABLE CAMERA &amp; PLAY</button>
+            <p id="welcome-status" style="min-height: 1.1rem; margin-top: 1rem; font-family: var(--font-pixel); font-size: 0.6rem; color: var(--text-muted);"></p>
+            <p style="margin-top: 0.7rem; font-size: 0.72rem; color: var(--text-muted); line-height: 1.5;">
+                🔒 Private by design — all camera processing happens in your browser. No video is ever uploaded.
+            </p>
+        </div>
+    </div>
 
     <!-- Settings Modal Overlay -->
     <div id="settings-modal" class="modal-overlay">
@@ -152,7 +175,7 @@
                             <span style="font-size: 0.6rem; color: var(--accent-yellow);">7 SYSTEMS ONLINE</span>
                         </div>
                         
-                        <button onclick="startCircuit()" class="btn-arcade yellow" style="width: 100%; padding: 1rem; margin-bottom: 1.5rem; font-size: 1rem;">▶ START FULL-BODY CIRCUIT</button>
+                        <button onclick="startWorkoutFlow()" class="btn-arcade yellow" style="width: 100%; padding: 1rem; margin-bottom: 1.5rem; font-size: 1rem;">▶ START FULL-BODY CIRCUIT</button>
                         
                         <!-- Embedded Launcher Grid using the new CSS classes -->
                         <div class="launcher-grid" style="grid-template-columns: repeat(2, 1fr); gap: 1.5rem; padding: 0;">

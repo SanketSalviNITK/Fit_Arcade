@@ -32,8 +32,16 @@ class AppController {
         this.btnSound = document.getElementById('btn-sound-toggle');
         this.setupEventListeners();
         
-        // Default: Start loading Pose Detector in background for preview
-        poseDetector.addListener((results, posture) => this.onGlobalPoseDetected(results, posture));
+        // The camera is requested only on an EXPLICIT user gesture (the welcome overlay).
+        // Browsers suppress getUserMedia prompts that aren't user-initiated, which is why
+        // an auto-request on load silently failed to ask. If the user already granted the
+        // camera on a previous visit, skip the gate and start straight away.
+        this._poseCb = (results, posture) => this.onGlobalPoseDetected(results, posture);
+        if (navigator.permissions && navigator.permissions.query) {
+            navigator.permissions.query({ name: 'camera' })
+                .then(p => { if (p.state === 'granted') this.startExperience(); })
+                .catch(() => {});
+        }
 
         // Restore saved calibration so users don't have to recalibrate every session.
         if (typeof Store !== 'undefined') {
@@ -46,6 +54,47 @@ class AppController {
         }
 
         console.log("Workout Games App Controller Initialized.");
+    }
+
+    // Called by the welcome overlay's button (a real user gesture) — or automatically
+    // when the camera was already granted. This is what reliably triggers the prompt.
+    startExperience() {
+        const btn = document.getElementById('btn-welcome-start');
+        const status = document.getElementById('welcome-status');
+        const stext = document.getElementById('system-status-text');
+        if (typeof audio !== 'undefined') audio.init(); // unlock Web Audio on the same gesture
+        if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+        if (status) status.innerText = 'REQUESTING CAMERA…';
+
+        // Add the pose listener once (that triggers init); retries re-init directly.
+        if (!this._camWired) { this._camWired = true; poseDetector.addListener(this._poseCb); }
+        poseDetector.init(); // explicit, gesture-initiated camera start (guarded; safe to re-call)
+
+        let waited = 0;
+        if (this._camPoll) clearInterval(this._camPoll);
+        this._camPoll = setInterval(() => {
+            waited += 300;
+            if (poseDetector.initialized) {
+                clearInterval(this._camPoll);
+                this._finishWelcome();
+            } else if (stext && /ERROR|UNAVAILABLE/i.test(stext.innerText)) {
+                clearInterval(this._camPoll);
+                if (status) status.innerHTML = '<span style="color:#ff5b5b;">Camera blocked. Allow it in your browser, then retry.</span>';
+                if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerText = '↻ RETRY CAMERA'; }
+            } else if (waited > 20000) {
+                clearInterval(this._camPoll);
+                if (status) status.innerText = 'Still waiting — check the camera permission and retry.';
+                if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerText = '↻ RETRY'; }
+            }
+        }, 300);
+    }
+
+    _finishWelcome() {
+        const ov = document.getElementById('welcome-overlay');
+        if (ov) ov.classList.remove('active');
+        // New user -> guided calibration; returning (already calibrated) -> straight to home.
+        if (poseDetector.baselines && poseDetector.baselines.calibrated) this.goToHome();
+        else this.goToCalibration();
     }
 
     setupEventListeners() {

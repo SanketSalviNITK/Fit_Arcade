@@ -123,6 +123,7 @@ class PoseDetector {
             this.loading = false;
             console.log("MediaPipe Pose & Camera fully initialized.");
             document.getElementById('system-status-text').innerText = "SYSTEM ACTIVE";
+            document.getElementById('system-status-text').style.color = "var(--success-green)";
             document.getElementById('system-status-dot').style.backgroundColor = "var(--success-green)";
             document.getElementById('system-status-dot').style.boxShadow = "0 0 8px var(--success-green)";
         } catch (err) {
@@ -130,7 +131,7 @@ class PoseDetector {
             console.error("Failed to initialize MediaPipe / Camera:", err);
             const statusText = document.getElementById('system-status-text');
             const statusDot = document.getElementById('system-status-dot');
-            if (statusText) statusText.innerText = "CAMERA ERROR — ALLOW WEBCAM & REFRESH";
+            if (statusText) { statusText.innerText = "CAMERA ERROR — ALLOW WEBCAM"; statusText.style.color = "#ff5b5b"; }
             if (statusDot) {
                 statusDot.style.backgroundColor = "red";
                 statusDot.style.boxShadow = "0 0 8px red";
@@ -147,7 +148,10 @@ class PoseDetector {
 
     addListener(callback) {
         this.listeners.add(callback);
-        this.init(); // Auto-init on subscription
+        // NOTE: init() is intentionally NOT called here. The camera starts only via an
+        // explicit user gesture (AppController.startExperience) so the browser reliably
+        // shows the permission prompt. Subscribing early is harmless — listeners just
+        // begin receiving frames once the camera is enabled.
     }
 
     removeListener(callback) {

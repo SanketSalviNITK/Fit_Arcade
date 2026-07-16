@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cyberpunk Punching Brawler</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { overflow: hidden; margin: 0; padding: 0; width: 100%; height: 100%; 
+            margin: 0;
+            background-color: #111;
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            image-rendering: pixelated; 
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.4);
+            border: 4px solid #fff;
+            margin-top: 20px;
+        }
+        #info { text-align: center; margin-top: 10px; }
+        h2 { color: #00ffff; margin-bottom: 5px; }
+        p { margin: 5px; }
+    </style>
+    <link rel="stylesheet" href="css/game-frame.css">
+    <script>
+        window.MOTION_MAP = {
+            uppercutLeft:  { type: 'tap',  code: 'ArrowLeft',  keyCode: 37, key: 'ArrowLeft' },
+            uppercutRight: { type: 'tap',  code: 'ArrowRight', keyCode: 39, key: 'ArrowRight' },
+            guard:         { type: 'hold', code: 'ArrowDown',  keyCode: 40, key: 'ArrowDown', state: 'isGuarding' }
+        };
+    </script>
+    <script src="js/motion-bridge.js"></script>
+    <script src="js/coach.js"></script>
+</head>
+<body>
+    
+    <script>
+        class PlayScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'PlayScene' });
+            }
+
+            preload() {
+                this.load.image('bg', 'street_bg.png');
+                this.load.image('drone', 'hover_drone.png');
+                this.load.spritesheet('hero_sheet', 'hero_punch_sheet.png', { frameWidth: 128, frameHeight: 128 });
+                this.load.spritesheet('thug_run_sheet', 'thug_run_sheet.png', { frameWidth: 128, frameHeight: 128 });
+                this.load.spritesheet('thug_punch_sheet', 'thug_punch_sheet.png', { frameWidth: 128, frameHeight: 128 });
+                
+                // Spark texture for hits
+                let graphics = this.make.graphics({x: 0, y: 0, add: false});
+                graphics.fillStyle(0xffffff, 1);
+                graphics.fillCircle(4, 4, 4);
+                graphics.generateTexture('spark', 8, 8);
+            }
+
+            create() {
+                this.gameOver = false;
+                this.score = 0;
+                this.invulnerable = false;
+                this.enemySpeed = 175;
+
+                // --- ENVIRONMENT ---
+                // Dim the busy neon street so the fighters (full brightness) pop against it.
+                this.add.image(400, 300, 'bg').setTint(0x6e6e6e);
+
+                // Strike Zones (Visual indicators)
+                this.leftZone = this.add.rectangle(200, 500, 100, 200, 0x00ffff, 0.2);
+                this.leftZone.setStrokeStyle(2, 0x00ffff);
+                
+                this.rightZone = this.add.rectangle(600, 500, 100, 200, 0xff00ff, 0.2);
+                this.rightZone.setStrokeStyle(2, 0xff00ff);
+
+                // --- ANIMATIONS ---
+                this.anims.create({ key: 'hero_idle', frames: [{ key: 'hero_sheet', frame: 0 }], frameRate: 1 });
+                this.anims.create({ key: 'hero_punch', frames: this.anims.generateFrameNumbers('hero_sheet', { start: 1, end: 3 }), frameRate: 15, repeat: 0 });
+                this.anims.create({ key: 'thug_run', frames: this.anims.generateFrameNumbers('thug_run_sheet', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
+                this.anims.create({ key: 'thug_punch', frames: this.anims.generateFrameNumbers('thug_punch_sheet', { start: 0, end: 3 }), frameRate: 12, repeat: 0 });
+
+                // --- DRONES (Inactive Initially) ---
+                this.dronesActive = false;
+                this.brawlersKnocked = 0;
+
+                // Create drones off-screen (top)
+                this.leftDrone = this.add.image(80, -100, 'drone').setScale(0.6).setFlipX(true);
+                this.rightDrone = this.add.image(720, -100, 'drone').setScale(0.6);
+
+                // Laser Beams (Hidden initially)
+                // Depth is set to 4 (Player is 5) so the laser renders BEHIND the player.
+                // This makes it look like the laser is striking the side of the player's head/shoulders!
+                this.leftLaser = this.add.rectangle(240, 435, 320, 10, 0xff0000).setAlpha(0).setDepth(4);
+                this.rightLaser = this.add.rectangle(560, 435, 320, 10, 0xff0000).setAlpha(0).setDepth(4);
+
+
+                // --- PLAYER (2D Side-Scrolling) ---
+                this.player = this.physics.add.sprite(400, 500, 'hero_sheet').setScale(1.5); // Added physics body
+                this.player.setDepth(5);
+                this.player.anims.play('hero_idle');
+                this.isDucking = false;
+                
+                // Return to idle after punching
+                this.player.on('animationcomplete', (anim) => {
+                    if (anim.key === 'hero_punch') this.player.anims.play('hero_idle');
+                });
+
+                // --- ENEMIES ---
+                this.enemies = this.physics.add.group();
+
+                // Spawn Timer
+                this.spawnTimer = this.time.addEvent({
+                    delay: 2000,
+                    callback: this.spawnEnemy,
+                    callbackScope: this,
+                    loop: true
+                });
+
+                // --- UI ---
+                this.scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '32px', fill: '#00ffff', fontStyle: 'bold' });
+
+                // --- INPUT ---
+                this.cursors = this.input.keyboard.createCursorKeys();
+                // Report score to the FIT-ARCADE hub HUD.
+                this.time.addEvent({ delay: 250, loop: true, callback: () => { if (window.MotionBridge) window.MotionBridge.reportScore(this.score || 0); } });
+                this.input.keyboard.on('keydown-LEFT', () => this.punch('left'));
+                this.input.keyboard.on('keydown-RIGHT', () => this.punch('right'));
+                
+                this.input.keyboard.on('keydown-DOWN', () => {
+                    if (!this.gameOver && !this.isDucking) {
+                        this.isDucking = true;
+                        this.player.setScale(1.5, 0.9); // Squish down to simulate ducking
+                        this.player.y = 538; // Move down so feet stay planted
+                    }
+                });
+                
+                this.input.keyboard.on('keyup-DOWN', () => {
+                    if (!this.gameOver && this.isDucking) {
+                        this.isDucking = false;
+                        this.player.setScale(1.5, 1.5);
+                        this.player.y = 500;
+                    }
+                });
+
+                // --- VFX ---
+                this.sparkEmitter = this.add.particles('spark').createEmitter({
+                    x: 0, y: 0,
+                    speed: { min: -300, max: 300 },
+                    angle: { min: 0, max: 360 },
+                    scale: { start: 1, end: 0 },
+                    blendMode: 'ADD',
+                    lifespan: 300,
+                    tint: [0x00ffff, 0xff00ff, 0xffffff],
+                    gravityY: 800,
+                    on: false
+                });
+            }
+
+            activateDrones() {
+                this.dronesActive = true;
+                
+                // Fly in slowly from top
+                this.tweens.add({
+                    targets: [this.leftDrone, this.rightDrone],
+                    y: 430, // Brought slightly down
+                    duration: 5000, // 5 seconds to slowly float in
+                    ease: 'Sine.easeInOut',
+                    onComplete: () => {
+                        // Start hover effect
+                        this.tweens.add({
+                            targets: [this.leftDrone, this.rightDrone],
+                            y: 440,
+                            duration: 1500,
+                            yoyo: true,
+                            repeat: -1,
+                            ease: 'Sine.easeInOut'
+                        });
+
+                        // Start Firing Timer
+                        this.droneTimer = this.time.addEvent({
+                            delay: 5000,
+                            callback: this.droneWarning,
+                            callbackScope: this,
+                            loop: true
+                        });
+                    }
+                });
+            }
+
+            droneWarning() {
+                if (this.gameOver) return;
+                if (window.Coach) window.Coach.cue('DUCK!', 'Squat'); // laser charging → squat to dodge
+
+                // Flash drones white to warn player
+                this.leftDrone.setTintFill(0xffffff);
+                this.rightDrone.setTintFill(0xffffff);
+
+                // Create a charging spark effect
+                this.sparkEmitter.explode(20, this.leftDrone.x + 40, this.leftDrone.y);
+                this.sparkEmitter.explode(20, this.rightDrone.x - 40, this.rightDrone.y);
+
+                this.time.delayedCall(800, this.fireLasers, [], this);
+            }
+
+            fireLasers() {
+                if (this.gameOver) return;
+
+                this.leftDrone.clearTint();
+                this.rightDrone.clearTint();
+                
+                this.cameras.main.shake(200, 0.015);
+
+                // Show lasers
+                this.leftLaser.setAlpha(1);
+                this.rightLaser.setAlpha(1);
+                this.leftLaser.y = this.leftDrone.y;
+                this.rightLaser.y = this.rightDrone.y;
+
+                // Fade out lasers
+                this.tweens.add({
+                    targets: [this.leftLaser, this.rightLaser],
+                    alpha: 0,
+                    duration: 300,
+                    ease: 'Power2'
+                });
+
+                // Check if player dodged
+                if (!this.isDucking) {
+                    this.takeDamage();
+                } else {
+                    this.score += 50;
+                    this.scoreText.setText('Score: ' + this.score);
+                }
+            }
+
+            spawnEnemy() {
+                if (this.gameOver) return;
+
+                // Random side
+                let side = (Math.random() > 0.5) ? 'left' : 'right';
+                
+                let startX = (side === 'left') ? -50 : 850;
+                let velocityX = ((side === 'left') ? this.enemySpeed : -this.enemySpeed) * (window.MOTION_DIFFICULTY || 1);
+                
+                let enemy = this.enemies.create(startX, 500, 'thug_run_sheet').setScale(1.5); // Match player Y (street level)
+                
+                // If the thug sprite naturally generated facing right:
+                // side === 'right' means he spawns on the right and moves left, so he needs to be flipped!
+                if (side === 'right') enemy.setFlipX(true); 
+                
+                enemy.side = side;
+                enemy.setVelocityX(velocityX);
+                enemy.anims.play('thug_run', true);
+                enemy.body.allowGravity = false;
+                
+                // Increase difficulty
+                this.spawnTimer.delay = Math.max(1300, this.spawnTimer.delay - 25); // keep >=1.3s between thugs
+                this.enemySpeed = Math.min(230, this.enemySpeed + 2);
+            }
+
+            punch(side) {
+                if (this.gameOver) {
+                    return;
+                }
+
+                let targetX = (side === 'left') ? 200 : 600;
+                let zone = (side === 'left') ? this.leftZone : this.rightZone;
+
+                // Face punch direction (hero naturally faces right)
+                this.player.setFlipX(side === 'left');
+
+                // Animate Player Punch
+                this.player.anims.play('hero_punch');
+
+                // Flash Zone
+                zone.fillAlpha = 0.6;
+                this.time.delayedCall(100, () => { zone.fillAlpha = 0.2; });
+
+                // Hit Detection
+                let hitSomething = false;
+                this.enemies.getChildren().forEach(enemy => {
+                    // Check if enemy is within the strike zone X bounds
+                    let dist = Math.abs(enemy.x - targetX);
+                    if (dist < 60 && enemy.side === side && enemy.active) {
+                        // HIT!
+                        this.sparkEmitter.explode(20, enemy.x, enemy.y);
+                        this.cameras.main.shake(100, 0.01);
+                        
+                        enemy.destroy();
+                        
+                        this.score += 100;
+                        this.scoreText.setText('Score: ' + this.score);
+                        hitSomething = true;
+                        
+                        this.brawlersKnocked++;
+                        if (this.brawlersKnocked === 10 && !this.dronesActive) {
+                            this.activateDrones();
+                        }
+                    }
+                });
+            }
+
+            update(time, delta) {
+                if (this.gameOver) return;
+
+                // Rhythmic mode: lock spawn cadence to the game's music beat.
+                if (this.spawnTimer && window.MOTION_RHYTHM && window.MOTION_RHYTHM.mode === 'rhythmic' && window.MOTION_RHYTHM.beatMs) {
+                    this.spawnTimer.delay = window.MOTION_RHYTHM.beatMs;
+                }
+
+                // Check if enemies hit the player (reached center)
+                this.enemies.getChildren().forEach(enemy => {
+                    if (!enemy.active || enemy.hasHit) return;
+                    
+                    if (!enemy.coached && ((enemy.side === 'left' && enemy.x > 180 && enemy.x < 330) || (enemy.side === 'right' && enemy.x < 620 && enemy.x > 470))) {
+                        enemy.coached = true;
+                        if (window.Coach) window.Coach.cue(enemy.side === 'left' ? 'PUNCH LEFT!' : 'PUNCH RIGHT!', enemy.side === 'left' ? 'Punch left' : 'Punch right');
+                    }
+
+                    let reachedCenter = (enemy.side === 'left' && enemy.x > 350) ||
+                                        (enemy.side === 'right' && enemy.x < 450);
+                                        
+                    if (reachedCenter) {
+                        enemy.hasHit = true;
+                        enemy.setVelocityX(0); // Stop running
+                        
+                        enemy.anims.play('thug_punch');
+                        
+                        // Remove enemy so it doesn't repeatedly hit
+                        enemy.destroy();
+                        this.takeDamage();
+                        
+                        // Destroy enemy after their punch animation finishes
+                        enemy.on('animationcomplete', (anim) => {
+                            if (anim.key === 'thug_punch') enemy.destroy();
+                        });
+                    }
+                });
+            }
+
+            takeDamage() {
+                if (this.invulnerable) return;
+                
+                this.score = Math.max(0, this.score - 50);
+                this.scoreText.setText('Score: ' + this.score);
+                
+                this.cameras.main.shake(200, 0.02);
+                this.cameras.main.flash(200, 255, 0, 0);
+
+                this.invulnerable = true;
+
+                // The hero is a stationary fighter — take the hit as a flash only,
+                // no physics knockback (previously it flew off-screen with zero gravity).
+                this.player.body.setVelocity(0, 0);
+
+                this.tweens.add({
+                    targets: this.player,
+                    alpha: 0.2,
+                    yoyo: true,
+                    repeat: 7,
+                    duration: 100,
+                    onComplete: () => {
+                        this.player.alpha = 1;
+                        this.invulnerable = false;
+                        this.player.body.setVelocity(0, 0);
+                    }
+                });
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: document.body,
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 },
+                    debug: false
+                }
+            },
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            scene: [PlayScene]
+        };
+
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>

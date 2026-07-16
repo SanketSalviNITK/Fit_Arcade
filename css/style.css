@@ -1,0 +1,1418 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Outfit:wght@300;400;600;700&display=swap');
+
+:root {
+    --bg-dark: #090611;
+    --bg-card: #140e28;
+    --bg-card-hover: #1f163a;
+    --primary-cyan: #00f0ff;
+    --primary-neon-pink: #ff007f;
+    --accent-yellow: #ffea00;
+    --success-green: #39ff14;
+    --text-white: #f5f3f7;
+    --text-muted: #8b85a3;
+    --font-pixel: 'Press Start 2P', monospace;
+    --font-sans: 'Outfit', sans-serif;
+    --border-glow: 0 0 10px rgba(0, 240, 255, 0.3), 0 0 20px rgba(0, 240, 255, 0.1);
+    --border-glow-pink: 0 0 10px rgba(255, 0, 127, 0.3), 0 0 20px rgba(255, 0, 127, 0.1);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-white);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* Background grid effect */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: 
+        linear-gradient(rgba(18, 10, 36, 0.4) 0%, rgba(9, 6, 17, 0.8) 100%),
+        linear-gradient(90deg, rgba(255, 0, 127, 0.04) 1px, transparent 1px),
+        linear-gradient(rgba(255, 0, 127, 0.04) 1px, transparent 1px);
+    background-size: 100% 100%, 40px 40px, 40px 40px;
+    z-index: -1;
+    pointer-events: none;
+}
+
+/* CRT Scanline Effect Overlay */
+.crt-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.25) 50%
+    );
+    background-size: 100% 4px;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+/* Cabinet Header */
+.arcade-header {
+    background: linear-gradient(180deg, #1c1437 0%, var(--bg-dark) 100%);
+    border-bottom: 3px solid var(--primary-cyan);
+    box-shadow: 0 4px 20px rgba(0, 240, 255, 0.2);
+    padding: 1.2rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+}
+
+.arcade-title {
+    font-family: var(--font-pixel);
+    font-size: 1.4rem;
+    color: #fff;
+    text-shadow: 
+        0 0 5px #fff,
+        0 0 10px var(--primary-cyan),
+        0 0 20px var(--primary-neon-pink);
+    letter-spacing: 2px;
+    animation: neon-pulse 1.5s infinite alternate;
+}
+
+.arcade-subtitle {
+    font-size: 0.65rem;
+    font-family: var(--font-pixel);
+    color: var(--accent-yellow);
+    margin-top: 0.4rem;
+    letter-spacing: 1px;
+}
+
+/* Core Dashboard Layout */
+.app-container {
+    max-width: 1300px;
+    margin: 2rem auto;
+    padding: 0 1.5rem;
+}
+
+/* Screens Wrapper */
+.screen {
+    display: none;
+}
+
+.screen.active {
+    display: block;
+    animation: fade-in 0.4s ease-out;
+}
+
+/* Dashboard Home Grid */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+}
+
+@media (max-width: 900px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Cyber Panels (Base Cards) */
+.arcade-panel {
+    background-color: var(--bg-card);
+    border: 2px solid var(--primary-cyan);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    box-shadow: var(--border-glow);
+    overflow: hidden;
+}
+
+.arcade-panel.pink {
+    border-color: var(--primary-neon-pink);
+    box-shadow: var(--border-glow-pink);
+}
+
+.panel-header {
+    font-family: var(--font-pixel);
+    font-size: 1rem;
+    color: var(--primary-cyan);
+    margin-bottom: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+    padding-bottom: 0.75rem;
+}
+
+.arcade-panel.pink .panel-header {
+    color: var(--primary-neon-pink);
+    border-color: rgba(255, 0, 127, 0.2);
+}
+
+/* Launcher Grid */
+.launcher-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    padding: 2rem 0;
+}
+
+/* Premium Game Cards */
+.game-card {
+    background-color: var(--bg-card);
+    border: 2px solid var(--primary-cyan);
+    border-radius: 12px;
+    padding: 1.8rem;
+    position: relative;
+    box-shadow: var(--border-glow);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    text-decoration: none; /* For wrapping anchor tags */
+}
+
+.game-card:hover {
+    transform: translateY(-8px);
+    border-color: var(--primary-neon-pink);
+    box-shadow: 0 15px 30px rgba(255, 0, 127, 0.3), 0 0 20px rgba(255, 0, 127, 0.2);
+    background-color: var(--bg-card-hover);
+}
+
+.game-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--primary-cyan), var(--primary-neon-pink));
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.game-card:hover::before {
+    opacity: 1;
+}
+
+.game-title {
+    font-family: var(--font-pixel);
+    font-size: 1.1rem;
+    color: #fff;
+    line-height: 1.4;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+}
+
+.game-target {
+    font-size: 0.8rem;
+    color: var(--accent-yellow);
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.game-desc {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+    flex-grow: 1;
+}
+
+.game-card:hover .btn-arcade {
+    background-color: var(--primary-neon-pink);
+    color: #fff;
+    border-color: var(--primary-neon-pink);
+    box-shadow: 0 0 15px rgba(255, 0, 127, 0.6);
+}
+
+/* Regime Card List (Legacy but kept for safety) */
+.regime-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+}
+
+.regime-card {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 1.2rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.regime-card:hover {
+    background-color: var(--bg-card-hover);
+    border-color: var(--primary-cyan);
+    transform: translateX(4px);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+}
+
+.regime-info h3 {
+    font-family: var(--font-pixel);
+    font-size: 0.85rem;
+    color: #fff;
+    margin-bottom: 0.5rem;
+}
+
+.regime-info p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.regime-meta {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.6rem;
+    font-size: 0.75rem;
+}
+
+.meta-tag {
+    background-color: rgba(0, 240, 255, 0.15);
+    color: var(--primary-cyan);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 240, 255, 0.3);
+}
+
+.meta-tag.pink {
+    background-color: rgba(255, 0, 127, 0.15);
+    color: var(--primary-neon-pink);
+    border-color: rgba(255, 0, 127, 0.3);
+}
+
+/* Camera Calibration Right Panel */
+.camera-preview-box {
+    width: 100%;
+    aspect-ratio: 4/3;
+    background-color: #05030b;
+    border: 2px dashed rgba(0, 240, 255, 0.3);
+    border-radius: 8px;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.camera-preview-box video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* mirror effect */
+}
+
+.camera-preview-box canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.camera-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(13, 8, 27, 0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    z-index: 10;
+    transition: opacity 0.3s ease;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(0, 240, 255, 0.1);
+    border-top-color: var(--primary-cyan);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Arcade Buttons */
+.btn-arcade {
+    font-family: var(--font-pixel);
+    font-size: 0.8rem;
+    padding: 0.9rem 1.6rem;
+    background-color: transparent;
+    color: var(--primary-cyan);
+    border: 2px solid var(--primary-cyan);
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.2);
+    transition: all 0.1s ease;
+    text-transform: uppercase;
+}
+
+.btn-arcade:hover {
+    background-color: var(--primary-cyan);
+    color: var(--bg-dark);
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.6);
+    transform: scale(1.03);
+}
+
+.btn-arcade:active {
+    transform: scale(0.97);
+}
+
+.btn-arcade.pink {
+    color: var(--primary-neon-pink);
+    border-color: var(--primary-neon-pink);
+    box-shadow: 0 0 8px rgba(255, 0, 127, 0.2);
+}
+
+.btn-arcade.pink:hover {
+    background-color: var(--primary-neon-pink);
+    color: var(--text-white);
+    box-shadow: 0 0 15px rgba(255, 0, 127, 0.6);
+}
+
+.btn-arcade.yellow {
+    color: var(--accent-yellow);
+    border-color: var(--accent-yellow);
+    box-shadow: 0 0 8px rgba(255, 234, 0, 0.2);
+}
+
+.btn-arcade.green {
+    color: var(--success-green);
+    border-color: var(--success-green);
+    box-shadow: 0 0 8px rgba(57, 255, 20, 0.25);
+}
+.btn-arcade.green:hover {
+    background-color: var(--success-green);
+    color: var(--bg-dark);
+    box-shadow: 0 0 15px rgba(57, 255, 20, 0.6);
+}
+
+.btn-arcade.yellow:hover {
+    background-color: var(--accent-yellow);
+    color: var(--bg-dark);
+    box-shadow: 0 0 15px rgba(255, 234, 0, 0.6);
+}
+
+/* Calibration screen details */
+.cal-guide-list {
+    /* Superseded by the one-at-a-time #cal-progress wizard; kept in DOM (JS writes
+       rep counters/classes to these items) but hidden to avoid a scrolling checklist. */
+    display: none !important;
+}
+
+/* ---- One-at-a-time calibration progress wizard ---- */
+.cal-progress {
+    margin: 0.9rem 0;
+}
+.cal-progress-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 0.5rem;
+}
+.cal-progress-label {
+    font-family: var(--font-pixel);
+    font-size: 0.6rem;
+    letter-spacing: 1px;
+    color: var(--primary-cyan);
+}
+.cal-progress-pct {
+    font-family: var(--font-pixel);
+    font-size: 0.6rem;
+    color: var(--accent-yellow);
+}
+.cal-progress-track {
+    height: 12px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    overflow: hidden;
+}
+.cal-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--primary-cyan), var(--primary-neon-pink));
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+    transition: width 0.4s ease;
+}
+.cal-current-step {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 1.1rem;
+}
+.cal-current-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--primary-neon-pink);
+    box-shadow: 0 0 10px var(--primary-neon-pink);
+    animation: cal-pulse-dot 1s ease-in-out infinite;
+}
+.cal-current-name {
+    font-family: var(--font-pixel);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: #fff;
+}
+.cal-next-step {
+    margin-top: 0.55rem;
+    padding-left: 1.6rem;
+    min-height: 0.9rem;
+    font-family: var(--font-pixel);
+    font-size: 0.55rem;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+@keyframes cal-pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.cal-guide-item {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.cal-guide-item.active {
+    color: var(--success-green);
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--text-muted);
+    transition: background-color 0.2s ease;
+}
+
+.cal-guide-item.active .status-dot {
+    background-color: var(--success-green);
+    box-shadow: 0 0 8px var(--success-green);
+}
+
+/* Game Interface Layout */
+/* =========================================================================
+   GAMEPLAY SCREEN — the neon "arcade cabinet" stage
+   ========================================================================= */
+.game-screen-layout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+}
+
+/* The stage: marquee HUD bar + game viewport, wrapped in one neon frame */
+.game-stage {
+    display: flex;
+    flex-direction: column;
+    background: #090611;
+    border: 3px solid var(--primary-cyan);
+    border-radius: 14px;
+    box-shadow: var(--border-glow), inset 0 0 30px rgba(0, 240, 255, 0.06);
+    overflow: hidden;
+}
+
+/* Marquee: game title + live fitness stats. Sits ABOVE the game, never covering it. */
+.game-marquee {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.55rem 0.9rem;
+    background: linear-gradient(180deg, rgba(0, 240, 255, 0.10), rgba(9, 6, 17, 0));
+    border-bottom: 2px solid rgba(0, 240, 255, 0.35);
+}
+.game-marquee-title {
+    font-family: var(--font-pixel);
+    font-size: 0.8rem;
+    color: var(--primary-cyan);
+    text-shadow: 0 0 10px var(--primary-cyan);
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+/* Game viewport: aspect-ratio matches the loaded game so the canvas fills edge-to-edge.
+   Height is bounded by BOTH the viewport height and available width (minus the rail),
+   so the correct aspect is always preserved with no letterboxing. */
+.game-viewport {
+    position: relative;
+    aspect-ratio: var(--ar-num, 1.3333);
+    height: min(62vh, calc((92vw - 320px) / var(--ar-num, 1.3333)));
+    background: #090611;
+}
+.game-viewport iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    display: block;
+    background: #090611;
+}
+
+/* Control rail beside the stage */
+.game-rail {
+    width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+}
+
+/* Left rail: the "do this move" stick-figure demo (mirrors the camera box) */
+.game-demo-rail {
+    width: 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+.move-demo-box {
+    aspect-ratio: 3 / 4;             /* taller than the camera box — fits a standing figure */
+    border-style: solid;
+    border-color: var(--primary-neon-pink);
+    box-shadow: var(--border-glow-pink);
+}
+.move-demo-box canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.move-demo-label {
+    font-family: var(--font-pixel);
+    font-size: 0.72rem;
+    color: var(--primary-neon-pink);
+    text-align: center;
+    letter-spacing: 1px;
+    text-shadow: 0 0 8px var(--primary-neon-pink);
+}
+@media (max-width: 900px) {
+    .game-demo-rail { width: 100%; max-width: 340px; }
+}
+.rail-cam-label {
+    font-family: var(--font-pixel);
+    font-size: 0.6rem;
+    color: var(--success-green);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+}
+.rail-instructions {
+    font-family: var(--font-pixel);
+    font-size: 0.62rem;
+    line-height: 1.7;
+}
+
+@media (max-width: 900px) {
+    .game-screen-layout { flex-direction: column; }
+    .game-viewport { height: min(46vh, calc(94vw / var(--ar-num, 1.3333))); }
+    .game-rail { width: 100%; max-width: 520px; flex-direction: row; flex-wrap: wrap; }
+    .game-rail > .arcade-panel { flex: 1; min-width: 200px; }
+}
+
+/* Game HUD */
+.hud-bar {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    right: 1rem;
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-pixel);
+    font-size: 0.8rem;
+    color: var(--primary-cyan);
+    text-shadow: 0 0 5px rgba(0, 240, 255, 0.5);
+    pointer-events: none;
+    z-index: 5;
+}
+
+.hud-bar .score-val {
+    color: var(--accent-yellow);
+}
+
+.hud-bar .multiplier {
+    color: var(--primary-neon-pink);
+    animation: flash 1s infinite alternate;
+}
+
+/* Workout Summary Screen */
+.summary-container {
+    text-align: center;
+    max-width: 600px;
+    margin: 2rem auto;
+}
+
+.summary-title {
+    font-family: var(--font-pixel);
+    font-size: 1.8rem;
+    color: var(--accent-yellow);
+    text-shadow: 0 0 10px rgba(255, 234, 0, 0.4);
+    margin-bottom: 2rem;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2.5rem;
+}
+
+.stat-box {
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.stat-box h4 {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 0.6rem;
+}
+
+.stat-box p {
+    font-family: var(--font-pixel);
+    font-size: 1.5rem;
+    color: var(--primary-cyan);
+}
+
+/* Utility Animations */
+@keyframes neon-pulse {
+    0% {
+        text-shadow: 
+            0 0 4px #fff,
+            0 0 8px var(--primary-cyan),
+            0 0 16px var(--primary-neon-pink);
+    }
+    100% {
+        text-shadow: 
+            0 0 6px #fff,
+            0 0 12px var(--primary-cyan),
+            0 0 24px var(--primary-neon-pink),
+            0 0 32px var(--primary-neon-pink);
+    }
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: var(--bg-dark);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--bg-card-hover);
+    border: 1px solid var(--primary-cyan);
+    border-radius: 4px;
+}
+
+/* Settings Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background-color: rgba(9, 6, 17, 0.85);
+    backdrop-filter: blur(4px);
+    z-index: 10000;
+    display: none;
+    justify-content: center;
+    align-items: center;
+}
+.modal-overlay.active {
+    display: flex;
+    animation: fade-in 0.3s ease-out;
+}
+.settings-panel {
+    width: 90%;
+    max-width: 500px;
+    background-color: var(--bg-dark);
+}
+.settings-group {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 1.2rem;
+}
+.slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+.slider-row label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.neon-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    background: rgba(0, 240, 255, 0.2);
+    border-radius: 3px;
+    outline: none;
+}
+.neon-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--primary-cyan);
+    cursor: pointer;
+    box-shadow: 0 0 10px var(--primary-cyan);
+}
+.neon-slider.pink {
+    background: rgba(255, 0, 127, 0.2);
+}
+.neon-slider.pink::-webkit-slider-thumb {
+    background: var(--primary-neon-pink);
+    box-shadow: 0 0 10px var(--primary-neon-pink);
+}
+
+/* Visual Aid Animation */
+.visual-aid-container {
+    height: 92px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(0,0,0,0.2);
+    margin-top: 0.6rem;
+    position: relative;
+    overflow: hidden;
+}
+/* Visual Aid Canvas styling */
+#visual-aid-canvas {
+    image-rendering: pixelated;
+}
+
+/* =========================================
+   CIRCUIT MANAGER STYLES
+   ========================================= */
+
+/* The Circuit Timer HUD that sits over the game */
+.circuit-hud {
+    position: absolute;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(9, 6, 17, 0.85);
+    border: 2px solid var(--primary-cyan);
+    border-radius: 8px;
+    padding: 0.5rem 1.5rem;
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+    z-index: 50; /* Over the iframe */
+    display: none; /* Hidden by default */
+    text-align: center;
+    pointer-events: none;
+}
+
+.circuit-hud.active {
+    display: block;
+    animation: fade-in 0.3s ease-out;
+}
+
+.circuit-hud-label {
+    font-family: var(--font-pixel);
+    font-size: 0.5rem;
+    color: var(--primary-neon-pink);
+    margin-bottom: 0.3rem;
+}
+
+.circuit-hud-timer {
+    font-family: var(--font-pixel);
+    font-size: 1.5rem;
+    color: var(--primary-cyan);
+    text-shadow: 0 0 10px var(--primary-cyan);
+}
+
+/* The Breather / Rest Screen Overlay */
+.circuit-breather {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(9, 6, 17, 0.95);
+    backdrop-filter: blur(8px);
+    z-index: 60;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border-radius: 12px;
+}
+
+.circuit-breather.active {
+    display: flex;
+    animation: fade-in 0.4s ease-out;
+}
+
+.breather-title {
+    font-family: var(--font-pixel);
+    font-size: 2rem;
+    color: var(--accent-yellow);
+    text-shadow: 0 0 15px var(--accent-yellow);
+    margin-bottom: 1rem;
+}
+
+.breather-countdown {
+    font-family: var(--font-pixel);
+    font-size: 4rem;
+    color: var(--text-white);
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+    margin-bottom: 2rem;
+}
+
+.breather-next-label {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    letter-spacing: 2px;
+    margin-bottom: 0.5rem;
+}
+
+.breather-next-game {
+    font-family: var(--font-pixel);
+    font-size: 1.2rem;
+    color: var(--primary-cyan);
+    text-shadow: 0 0 10px var(--primary-cyan);
+    padding: 0.8rem 1.5rem;
+    border: 1px dashed var(--primary-cyan);
+    background: rgba(0, 240, 255, 0.1);
+    border-radius: 8px;
+}
+
+/* =========================================
+   UNIVERSAL MOTION HUD (overlaid on any game)
+   ========================================= */
+.motion-hud {
+    display: none; /* toggled to flex when a game is active */
+    gap: 0.5rem;
+    pointer-events: none;
+}
+.motion-hud.active { display: flex; }
+
+.motion-hud-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 54px;
+    background: rgba(9, 6, 17, 0.82);
+    border: 2px solid var(--primary-neon-pink);
+    border-radius: 8px;
+    padding: 0.3rem 0.55rem;
+    box-shadow: 0 0 12px rgba(255, 0, 127, 0.35);
+}
+.motion-hud-label {
+    font-family: var(--font-pixel);
+    font-size: 0.5rem;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    margin-bottom: 0.3rem;
+}
+.motion-hud-value {
+    font-family: var(--font-pixel);
+    font-size: 0.85rem;
+    color: var(--primary-cyan);
+    text-shadow: 0 0 8px var(--primary-cyan);
+}
+/* Heart-rate chip: a steady pulse so it reads as "live vitals" (only while playing) */
+#hud-bpm-stat .motion-hud-label { color: var(--primary-neon-pink); }
+.motion-hud.active #hud-bpm-stat { animation: bpm-beat 1s ease-in-out infinite; }
+@keyframes bpm-beat {
+    0%, 100% { transform: scale(1); }
+    12%      { transform: scale(1.08); }
+    24%      { transform: scale(1); }
+}
+
+/* Brief pulse when a rep is counted */
+.motion-hud-stat.rep-pulse {
+    animation: hud-pulse 0.35s ease-out;
+}
+
+/* ---- Workout summary: subtitle + shareable card ---- */
+.summary-subtitle {
+    font-family: var(--font-pixel);
+    font-size: 0.72rem;
+    color: var(--primary-cyan);
+    text-align: center;
+    margin-bottom: 1.6rem;
+    letter-spacing: 1px;
+    text-shadow: 0 0 8px var(--primary-cyan);
+}
+.share-card-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.8rem;
+}
+#share-card {
+    width: 280px;
+    height: 350px;
+    border-radius: 10px;
+    box-shadow: var(--border-glow);
+}
+.summary-actions {
+    display: flex;
+    gap: 1.2rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 2rem;
+}
+
+/* Numeric biometric inputs in Settings */
+.neon-number {
+    width: 74px;
+    background: rgba(0, 240, 255, 0.06);
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    border-radius: 6px;
+    color: var(--primary-cyan);
+    font-family: var(--font-pixel);
+    font-size: 0.75rem;
+    text-align: center;
+    padding: 0.4rem 0.3rem;
+}
+.neon-number:focus {
+    outline: none;
+    border-color: var(--primary-neon-pink);
+    box-shadow: 0 0 8px rgba(255, 0, 127, 0.4);
+}
+
+/* ---- Home progress / progression panel ---- */
+.prog-streak {
+    font-size: 0.6rem !important;
+    color: var(--accent-yellow) !important;
+}
+.prog-level-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.3rem;
+}
+.prog-level-badge {
+    font-family: var(--font-pixel);
+    font-size: 0.85rem;
+    color: var(--bg-dark);
+    background: var(--primary-cyan);
+    box-shadow: 0 0 14px var(--primary-cyan);
+    padding: 0.6rem 0.8rem;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+.prog-xp { flex: 1; }
+.prog-xp-bar {
+    height: 14px;
+    background: rgba(0, 240, 255, 0.1);
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.prog-xp-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--primary-cyan), var(--primary-neon-pink));
+    box-shadow: 0 0 12px var(--primary-neon-pink);
+    transition: width 0.6s ease-out;
+}
+.prog-xp-text {
+    font-family: var(--font-pixel);
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    margin-top: 0.4rem;
+    text-align: right;
+}
+.prog-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+.prog-stat {
+    flex: 1;
+    text-align: center;
+    background: rgba(0, 240, 255, 0.04);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 8px;
+    padding: 0.7rem 0.4rem;
+}
+.prog-stat span {
+    display: block;
+    font-family: var(--font-pixel);
+    font-size: 0.95rem;
+    color: var(--primary-cyan);
+    text-shadow: 0 0 8px var(--primary-cyan);
+}
+.prog-stat label {
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+}
+.prog-history {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.prog-hist-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    padding: 0.4rem 0.2rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.prog-hist-row span:first-child { color: var(--primary-cyan); }
+.prog-hist-empty {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    padding: 0.5rem;
+}
+
+/* XP line on the summary screen */
+.summary-xp {
+    font-family: var(--font-pixel);
+    font-size: 0.85rem;
+    color: var(--accent-yellow);
+    text-align: center;
+    margin-bottom: 1.4rem;
+    text-shadow: 0 0 10px var(--accent-yellow);
+}
+@keyframes hud-pulse {
+    0%   { transform: scale(1); box-shadow: 0 0 12px rgba(255, 0, 127, 0.35); }
+    40%  { transform: scale(1.18); box-shadow: 0 0 22px var(--success-green); border-color: var(--success-green); }
+    100% { transform: scale(1); box-shadow: 0 0 12px rgba(255, 0, 127, 0.35); }
+}
+
+/* =========================================================================
+   BOLDER VISUAL REFRESH
+   ========================================================================= */
+
+/* ---- Ambient animated background: aurora blobs + perspective synthwave grid ---- */
+#bg-fx {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    overflow: hidden;
+    background:
+        radial-gradient(1200px 820px at 12% -12%, rgba(255, 0, 127, 0.12), transparent 60%),
+        radial-gradient(1000px 720px at 100% -5%, rgba(0, 240, 255, 0.12), transparent 55%),
+        radial-gradient(1000px 900px at 50% 125%, rgba(123, 40, 255, 0.14), transparent 62%);
+}
+#bg-fx::before {
+    content: '';
+    position: absolute;
+    inset: -25%;
+    background:
+        radial-gradient(closest-side, rgba(0, 240, 255, 0.12), transparent) 8% 18% / 52% 52% no-repeat,
+        radial-gradient(closest-side, rgba(255, 0, 127, 0.12), transparent) 82% 62% / 44% 44% no-repeat;
+    filter: blur(36px);
+    animation: aurora-drift 24s ease-in-out infinite alternate;
+}
+#bg-fx::after {
+    content: '';
+    position: absolute;
+    left: -50%;
+    right: -50%;
+    bottom: -12%;
+    height: 58%;
+    background-image:
+        linear-gradient(rgba(0, 240, 255, 0.20) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 240, 255, 0.14) 1px, transparent 1px);
+    background-size: 48px 48px, 48px 48px;
+    transform: perspective(340px) rotateX(63deg);
+    transform-origin: bottom center;
+    -webkit-mask-image: linear-gradient(to top, #000 8%, transparent 88%);
+    mask-image: linear-gradient(to top, #000 8%, transparent 88%);
+    animation: grid-scroll 6s linear infinite;
+}
+@keyframes aurora-drift {
+    0%   { background-position: 8% 18%, 82% 62%; }
+    100% { background-position: 22% 34%, 66% 46%; }
+}
+@keyframes grid-scroll {
+    0%   { background-position: 0 0, 0 0; }
+    100% { background-position: 0 48px, 0 0; }
+}
+
+/* Simplify the old body grid to just a vignette (the grid now lives in #bg-fx) */
+body::before {
+    background: linear-gradient(rgba(18, 10, 36, 0.35) 0%, rgba(9, 6, 17, 0.82) 100%);
+    background-size: cover;
+}
+
+/* Freeze all motion for deterministic screenshots (toggled via body.capture-static) */
+.capture-static, .capture-static *, .capture-static *::before, .capture-static *::after {
+    animation: none !important;
+    transition: none !important;
+}
+
+/* ---- Bolder header wordmark: gradient text + layered glow ---- */
+.arcade-title {
+    font-size: 1.7rem;
+    background: linear-gradient(90deg, var(--primary-cyan), #ffffff 45%, var(--primary-neon-pink));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.55)) drop-shadow(0 0 20px rgba(255, 0, 127, 0.45));
+    animation: none;
+}
+.arcade-header { border-bottom-width: 2px; }
+
+/* ---- Panels: subtle top sheen for depth ---- */
+.arcade-panel { backdrop-filter: blur(2px); }
+.arcade-panel::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.5), transparent);
+    pointer-events: none;
+}
+.arcade-panel.pink::after { background: linear-gradient(90deg, transparent, rgba(255, 0, 127, 0.5), transparent); }
+
+/* ---- Game cards: neon pill tags + sheen sweep on hover ---- */
+.game-target {
+    display: inline-block;
+    align-self: flex-start;
+    font-family: var(--font-pixel);
+    font-size: 0.55rem;
+    line-height: 1;
+    color: var(--accent-yellow);
+    background: rgba(255, 234, 0, 0.08);
+    border: 1px solid rgba(255, 234, 0, 0.45);
+    border-radius: 999px;
+    padding: 0.4rem 0.75rem;
+    letter-spacing: 1px;
+    box-shadow: 0 0 10px rgba(255, 234, 0, 0.12);
+    text-transform: uppercase;
+}
+.game-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -70%;
+    width: 45%;
+    height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.10), transparent);
+    transform: skewX(-18deg);
+    transition: left 0.6s ease;
+    pointer-events: none;
+}
+.game-card:hover::after { left: 130%; }
+
+/* ---- Home right column ---- */
+.home-right {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+.plan-duration {
+    font-size: 0.6rem !important;
+    color: var(--accent-yellow) !important;
+}
+.plan-duration-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0.2rem 0 1.2rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid rgba(0, 240, 255, 0.28);
+    border-radius: 8px;
+    background: rgba(0, 240, 255, 0.05);
+}
+.pdc-label {
+    font-family: var(--font-pixel);
+    font-size: 0.58rem;
+    letter-spacing: 1px;
+    color: var(--primary-cyan);
+    text-shadow: 0 0 6px rgba(0, 240, 255, 0.5);
+}
+.pdc-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.pdc-btn {
+    width: 28px;
+    height: 28px;
+    line-height: 1;
+    font-family: var(--font-pixel);
+    font-size: 0.8rem;
+    color: #fff;
+    background: rgba(255, 0, 127, 0.18);
+    border: 1px solid var(--primary-neon-pink);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s;
+}
+.pdc-btn:hover {
+    background: rgba(255, 0, 127, 0.4);
+    box-shadow: 0 0 10px rgba(255, 0, 127, 0.5);
+}
+.pdc-input {
+    width: 54px;
+    text-align: center;
+    font-family: var(--font-pixel);
+    font-size: 0.78rem;
+    color: #fff;
+    background: #0a0a14;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 6px;
+    padding: 0.35rem 0.2rem;
+}
+.pdc-input:focus {
+    outline: none;
+    border-color: var(--primary-cyan);
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+}
+.pdc-unit {
+    font-family: var(--font-pixel);
+    font-size: 0.52rem;
+    color: var(--text-muted);
+}
+/* ---- Movement style toggle (rhythmic vs random) ---- */
+.movement-mode-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0 0 1.2rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid rgba(255, 0, 127, 0.28);
+    border-radius: 8px;
+    background: rgba(255, 0, 127, 0.05);
+}
+.mmc-label {
+    font-family: var(--font-pixel);
+    font-size: 0.58rem;
+    letter-spacing: 1px;
+    color: var(--primary-neon-pink);
+    text-shadow: 0 0 6px rgba(255, 0, 127, 0.5);
+}
+.mmc-seg {
+    display: flex;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #0a0a14;
+}
+.mmc-opt {
+    font-family: var(--font-pixel);
+    font-size: 0.55rem;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    background: transparent;
+    border: none;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.mmc-opt + .mmc-opt {
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
+}
+.mmc-opt:hover {
+    color: #fff;
+}
+.mmc-opt.active {
+    color: #0a0a14;
+    background: var(--primary-cyan);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+}
+.mmc-opt[data-mode="rhythmic"].active {
+    background: var(--primary-neon-pink);
+    box-shadow: 0 0 10px rgba(255, 0, 127, 0.6);
+    color: #fff;
+}
+.plan-phases {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+.plan-phase {
+    border-left: 3px solid var(--phase-color, var(--primary-cyan));
+    padding-left: 0.9rem;
+}
+.plan-phase-name {
+    font-family: var(--font-pixel);
+    font-size: 0.62rem;
+    color: var(--phase-color, var(--primary-cyan));
+    letter-spacing: 1px;
+    margin-bottom: 0.55rem;
+    text-shadow: 0 0 8px var(--phase-color, var(--primary-cyan));
+}
+.plan-ex {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.22rem 0;
+    font-size: 0.82rem;
+    color: var(--text-white);
+}
+.plan-ex small {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+    white-space: nowrap;
+}
+
+/* ---- Summary: bolder title + neon stat boxes + framed share card ---- */
+.summary-container { max-width: 720px; }
+.summary-title {
+    font-size: 2.1rem;
+    filter: drop-shadow(0 0 14px rgba(255, 234, 0, 0.5));
+}
+.stat-box {
+    background: linear-gradient(160deg, rgba(0, 240, 255, 0.05), rgba(255, 0, 127, 0.04));
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    box-shadow: inset 0 0 18px rgba(0, 240, 255, 0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.stat-box:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 240, 255, 0.12);
+}
+.stat-box p {
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+}
+#share-card {
+    border: 1px solid rgba(0, 240, 255, 0.35);
+}
+
+/* ---- In-game side rail: fill dead space, tidy spacing ---- */
+.game-rail .rail-instructions p:first-child { letter-spacing: 1px; }
+

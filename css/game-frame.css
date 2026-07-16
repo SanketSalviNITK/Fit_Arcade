@@ -1,0 +1,41 @@
+/* =========================================================================
+   FIT-ARCADE — shared game normalization
+   Loaded inside every standalone phaser-*.html so each game fills the hub's
+   neon stage edge-to-edge, with no per-page chrome. The hub owns the camera,
+   the framing, and the HUD — the game is just the canvas.
+   ========================================================================= */
+
+html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #090611 !important;
+}
+
+body {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Kill the standalone white borders / glows / offsets — the frame lives in the hub now. */
+canvas {
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    image-rendering: pixelated;
+}
+
+/* Retire leftover standalone camera + info chrome (hub owns these). */
+#info,
+#cameraControls,
+#enableCameraBtn,
+#debugCanvas,
+#calibrateBtn,
+#system-status-text,
+h2 {
+    display: none !important;
+}

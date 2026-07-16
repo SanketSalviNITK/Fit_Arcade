@@ -1,0 +1,189 @@
+% =====================================================================
+%  FIT-ARCADE (sensing/adaptation) — references
+%  Classic rPPG / method refs are accurate. Lines beginning "% VERIFY"
+%  flag entries the author must confirm (exact authors/venue/year) or
+%  replace, per the journal target. Add 4-6 recent (2023-2025) IEEE JBHI
+%  papers before submission (see README checklist).
+% =====================================================================
+
+% ---- Companion architecture paper (this paper cites it as a black box) ----
+@unpublished{fitarcade-sdps,
+  author = {[Author list]},
+  title  = {A Transdisciplinary Architecture for Markerless, Personalized Motion Exergaming},
+  note   = {Companion paper, under review, SDPS 2026},
+  year   = {2026}
+}
+
+% ---- Physical activity / exergames ----
+@techreport{who2020,
+  author      = {{World Health Organization}},
+  title       = {{WHO} Guidelines on Physical Activity and Sedentary Behaviour},
+  institution = {World Health Organization},
+  address     = {Geneva},
+  year        = {2020}
+}
+
+% VERIFY: representative exergame meta-analysis; consider a more recent one (2022-2024).
+@article{exergame-meta,
+  author  = {Gao, Zan and Chen, Senlin and Pasco, Daniel and Pope, Zachary},
+  title   = {A Meta-Analysis of Active Video Games on Health Outcomes Among Children and Adolescents},
+  journal = {Obesity Reviews},
+  volume  = {16},
+  number  = {9},
+  pages   = {783--794},
+  year    = {2015}
+}
+
+% ---- rPPG methods ----
+@article{verkruysse2008,
+  author  = {Verkruysse, Wim and Svaasand, Lars O. and Nelson, J. Stuart},
+  title   = {Remote Plethysmographic Imaging Using Ambient Light},
+  journal = {Optics Express},
+  volume  = {16},
+  number  = {26},
+  pages   = {21434--21445},
+  year    = {2008}
+}
+
+@article{poh2010,
+  author  = {Poh, Ming-Zher and McDuff, Daniel J. and Picard, Rosalind W.},
+  title   = {Non-contact, Automated Cardiac Pulse Measurements Using Video Imaging and Blind Source Separation},
+  journal = {Optics Express},
+  volume  = {18},
+  number  = {10},
+  pages   = {10762--10774},
+  year    = {2010}
+}
+
+@article{dehaan2013,
+  author  = {de Haan, Gerard and Jeanne, Vincent},
+  title   = {Robust Pulse Rate from Chrominance-Based {rPPG}},
+  journal = {IEEE Transactions on Biomedical Engineering},
+  volume  = {60},
+  number  = {10},
+  pages   = {2878--2886},
+  year    = {2013}
+}
+
+@article{wang2017,
+  author  = {Wang, Wenjin and den Brinker, Albertus C. and Stuijk, Sander and de Haan, Gerard},
+  title   = {Algorithmic Principles of Remote {PPG}},
+  journal = {IEEE Transactions on Biomedical Engineering},
+  volume  = {64},
+  number  = {7},
+  pages   = {1479--1491},
+  year    = {2017}
+}
+
+@inproceedings{chen2018,
+  author    = {Chen, Weixuan and McDuff, Daniel},
+  title     = {{DeepPhys}: Video-Based Physiological Measurement Using Convolutional Attention Networks},
+  booktitle = {European Conference on Computer Vision (ECCV)},
+  pages     = {349--365},
+  year      = {2018}
+}
+
+@inproceedings{yu2019,
+  author    = {Yu, Zitong and Li, Xiaobai and Zhao, Guoying},
+  title     = {Remote Photoplethysmograph Signal Measurement from Facial Videos Using Spatio-Temporal Networks},
+  booktitle = {British Machine Vision Conference (BMVC)},
+  year      = {2019}
+}
+
+% VERIFY: replace with a 2023-2025 rPPG survey to match venue recency.
+@article{rppg-survey,
+  author  = {Ni, Aoxin and Azarang, Arian and Kehtarnavaz, Nasser},
+  title   = {A Review of Deep Learning-Based Contactless Heart Rate Measurement Methods},
+  journal = {Sensors},
+  volume  = {21},
+  number  = {11},
+  pages   = {3719},
+  year    = {2021}
+}
+
+% ---- Markerless pose ----
+@article{blazepose,
+  author  = {Bazarevsky, Valentin and Grishchenko, Ivan and Raveendran, Karthik and Zhu, Tyler and Zhang, Fan and Grundmann, Matthias},
+  title   = {{BlazePose}: On-Device Real-Time Body Pose Tracking},
+  journal = {arXiv:2006.10204},
+  year    = {2020}
+}
+
+% VERIFY: insert a real MediaPipe/pose validation study (2023-2025).
+@article{mediapipe-validation,
+  author  = {[Author]},
+  title   = {Validation of {MediaPipe} Pose for Markerless Motion Analysis},
+  journal = {[Journal]},
+  year    = {2024},
+  note    = {VERIFY / replace with a real citation}
+}
+
+% ---- Adaptive / physiological games ----
+% VERIFY: exact venue/pages.
+@article{parnandi2013,
+  author  = {Parnandi, Avinash and Gutierrez-Osuna, Ricardo},
+  title   = {A Comparative Study of Game Mechanics and Control Laws for an Adaptive Physiological Game},
+  journal = {Journal on Multimodal User Interfaces},
+  volume  = {9},
+  number  = {3},
+  pages   = {245--254},
+  year    = {2015}
+}
+
+% VERIFY: ACM VRST 2024 HR-based DDA exergame; confirm authors/pages.
+@inproceedings{hrdda-vrst,
+  author    = {[Authors]},
+  title     = {Dynamic Difficulty Adjustment in Virtual Reality Exergaming to Regulate Exertion Levels via Heart Rate Monitoring},
+  booktitle = {ACM Symposium on Virtual Reality Software and Technology (VRST)},
+  year      = {2024},
+  note      = {VERIFY authors}
+}
+
+% VERIFY: confirm authors.
+@inproceedings{cardio-personalization,
+  author    = {[Authors]},
+  title     = {Personalized Adaptive Control of Training Load in Cardio-Exergames---A Feasibility Study},
+  booktitle = {Persuasive Technology},
+  year      = {2015},
+  note      = {VERIFY authors}
+}
+
+% VERIFY: vision-based multimodal energy-expenditure estimation.
+@article{ee-vision,
+  author  = {[Authors]},
+  title   = {Vision-Based Multimodal Energy Expenditure Estimation for Aerobic Exercise},
+  journal = {[Journal]},
+  year    = {2024},
+  note    = {VERIFY / replace}
+}
+
+% ---- Psychometrics ----
+@article{borg1982,
+  author  = {Borg, Gunnar A.},
+  title   = {Psychophysical Bases of Perceived Exertion},
+  journal = {Medicine and Science in Sports and Exercise},
+  volume  = {14},
+  number  = {5},
+  pages   = {377--381},
+  year    = {1982}
+}
+
+@article{imi,
+  author  = {McAuley, Edward and Duncan, Terry and Tammen, Vance V.},
+  title   = {Psychometric Properties of the Intrinsic Motivation Inventory in a Competitive Sport Setting},
+  journal = {Research Quarterly for Exercise and Sport},
+  volume  = {60},
+  number  = {1},
+  pages   = {48--58},
+  year    = {1989}
+}
+
+@article{gameflow,
+  author  = {Sweetser, Penelope and Wyeth, Peta},
+  title   = {{GameFlow}: A Model for Evaluating Player Enjoyment in Games},
+  journal = {Computers in Entertainment},
+  volume  = {3},
+  number  = {3},
+  pages   = {3},
+  year    = {2005}
+}

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hoverboard Alley - Tunnel Sandbox</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background-color: #111; 
+            color: #fff; 
+            font-family: 'Courier New', Courier, monospace; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            height: 100vh;
+        }
+        #game-container {
+            margin-top: 20px;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+        }
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+            background: #222;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        label {
+            font-size: 14px;
+            margin-bottom: 5px;
+            color: #00ffff;
+        }
+        input[type=range] {
+            width: 150px;
+        }
+        span {
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <div class="control-group">
+            <label>Spawn Delay (Overlap)</label>
+            <input type="range" id="spawnDelay" min="100" max="4000" value="1600" step="100">
+            <span id="spawnDelayVal">1600ms</span>
+        </div>
+        <div class="control-group">
+            <label>Zoom Duration (Speed)</label>
+            <input type="range" id="zoomDuration" min="1000" max="20000" value="8000" step="500">
+            <span id="zoomDurationVal">8000ms</span>
+        </div>
+        <div class="control-group">
+            <label>Max Scale</label>
+            <input type="range" id="maxScale" min="10" max="100" value="40" step="5">
+            <span id="maxScaleVal">40x</span>
+        </div>
+        <div class="control-group">
+            <label>Start Scale</label>
+            <input type="range" id="startScale" min="0.01" max="0.5" value="0.05" step="0.01">
+            <span id="startScaleVal">0.05x</span>
+        </div>
+    </div>
+
+    <div id="game-container"></div>
+
+    <script>
+        // Global config object so Phaser can read live HTML values
+        const SandboxConfig = {
+            spawnDelay: 1600,
+            zoomDuration: 8000,
+            maxScale: 40,
+            startScale: 0.05
+        };
+
+        // Wire up HTML UI
+        const setupSlider = (id, prop, suffix) => {
+            const slider = document.getElementById(id);
+            const display = document.getElementById(id + 'Val');
+            slider.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                SandboxConfig[prop] = val;
+                display.innerText = val + suffix;
+                
+                // If spawn delay changes, we need to tell the active scene to restart its timer
+                if (prop === 'spawnDelay' && window.game) {
+                    const scene = window.game.scene.scenes[0];
+                    if (scene && scene.updateTimer) {
+                        scene.updateTimer();
+                    }
+                }
+            });
+        };
+
+        setupSlider('spawnDelay', 'spawnDelay', 'ms');
+        setupSlider('zoomDuration', 'zoomDuration', 'ms');
+        setupSlider('maxScale', 'maxScale', 'x');
+        setupSlider('startScale', 'startScale', 'x');
+
+        class PlayScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'PlayScene' });
+            }
+
+            preload() {
+                this.load.image('alley_wall', 'alley_wall.png');
+                this.load.image('street_bg', 'street_bg.png');
+            }
+
+            create() {
+                this.vpX = 400; // Vanishing point X
+                this.vpY = 250; // Vanishing point Y
+
+                // Static Background to cover the hole
+                this.bg = this.add.image(this.vpX, this.vpY, 'street_bg');
+                this.bg.setDisplaySize(800, 600);
+                this.bg.setDepth(-1);
+
+                this.envItems = this.add.group();
+
+                this.startTimer();
+            }
+
+            startTimer() {
+                if (this.spawnTimer) {
+                    this.spawnTimer.remove(false);
+                }
+                this.spawnTimer = this.time.addEvent({
+                    delay: SandboxConfig.spawnDelay, 
+                    callback: this.spawnEnvironment,
+                    callbackScope: this,
+                    loop: true
+                });
+            }
+
+            updateTimer() {
+                this.startTimer();
+            }
+
+            spawnEnvironment() {
+                let frame = this.add.image(this.vpX, this.vpY, 'alley_wall');
+                
+                // Randomly flip horizontally to break the visual repetition
+                if (Math.random() > 0.5) frame.setFlipX(true);
+                
+                // Apply a slight random color tint
+                let tints = [0xffffff, 0xffffff, 0xddffff, 0xffddff, 0xffffdd];
+                frame.setTint(Phaser.Utils.Array.GetRandom(tints));
+
+                frame.setDisplaySize(800, 600);
+                frame.setScale(frame.scaleX * SandboxConfig.startScale, frame.scaleY * SandboxConfig.startScale);
+                frame.setDepth(0); 
+                this.envItems.add(frame);
+
+                this.tweens.add({
+                    targets: frame,
+                    scaleX: frame.scaleX * (SandboxConfig.maxScale / SandboxConfig.startScale), 
+                    scaleY: frame.scaleY * (SandboxConfig.maxScale / SandboxConfig.startScale),
+                    duration: SandboxConfig.zoomDuration, 
+                    ease: 'Quad.easeIn',
+                    onComplete: () => {
+                        frame.destroy();
+                    }
+                });
+            }
+
+            update() {
+                // Depth sort so larger items are drawn on top of smaller ones
+                this.envItems.getChildren().forEach(item => {
+                    item.setDepth(item.scaleX * 100);
+                });
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game-container',
+            scene: PlayScene,
+            pixelArt: true
+        };
+
+        window.game = new Phaser.Game(config);
+    </script>
+</body>
+</html>

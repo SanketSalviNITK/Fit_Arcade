@@ -1,0 +1,16 @@
+# dependencies / build output
+node_modules/
+dist/
+_site/
+
+# research collector output + local data (never commit captured data)
+data/
+
+# secrets / environment
+.env
+.env.*
+
+# editor / OS
+.DS_Store
+.vscode/
+*.log

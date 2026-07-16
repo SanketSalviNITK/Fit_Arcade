@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cyberpunk Climber MVP</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { overflow: hidden; margin: 0; padding: 0; width: 100%; height: 100%; 
+            margin: 0;
+            background-color: #111;
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            image-rendering: pixelated; 
+            box-shadow: 0 0 40px rgba(255, 100, 255, 0.3);
+            border: 4px solid #fff;
+            margin-top: 20px;
+        }
+        #info { text-align: center; margin-top: 10px; }
+        h2 { color: #ff00cc; margin-bottom: 5px; }
+    </style>
+    <link rel="stylesheet" href="css/game-frame.css">
+    <script>
+        window.MOTION_MAP = {
+            jump:            { type: 'tap', code: 'Space',      keyCode: 32, key: ' ' },
+            crossPunchLeft:  { type: 'tap', code: 'ArrowLeft',  keyCode: 37, key: 'ArrowLeft' },
+            crossPunchRight: { type: 'tap', code: 'ArrowRight', keyCode: 39, key: 'ArrowRight' }
+        };
+    </script>
+    <script src="js/motion-bridge.js"></script>
+    <script src="js/coach.js"></script>
+</head>
+<body>
+    
+    <script>
+        class PlayScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'PlayScene' });
+            }
+
+            preload() {
+                this.load.spritesheet('climber_sprite', 'climber_1x4.png', { frameWidth: 128, frameHeight: 128 });
+                
+                // Load AI Generated Assets
+                this.load.image('bg_raw', 'climber_bg.png');
+                this.load.image('wall_raw', 'wall_texture.png');
+                this.load.image('handhold_raw', 'handhold.png');
+                this.load.image('danger_raw', 'danger_smog.png');
+            }
+
+            create() {
+                this.climbSpeed = 120; // px/sec — paced for real reach/jump climbing
+                
+                let fWidth = 128;
+                let fHeight = 128;
+
+                // --- 0. DYNAMIC ASSET CLEANUP ---
+                // Remove white backgrounds from handhold so it becomes a clean sprite
+                let removeWhite = (key, newKey, targetWidth, targetHeight) => {
+                    let img = this.textures.get(key).getSourceImage();
+                    let canvas = this.textures.createCanvas(newKey, targetWidth, targetHeight);
+                    let ctx = canvas.getContext();
+                    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                    let imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+                    let data = imgData.data;
+                    for (let i = 0; i < data.length; i += 4) {
+                        if (data[i] > 220 && data[i+1] > 220 && data[i+2] > 220) {
+                            data[i+3] = 0; // Make white transparent
+                        }
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                    canvas.refresh();
+                };
+                removeWhite('handhold_raw', 'handhold_clean', 64, 32);
+                
+                // Create a soft-edged smog texture (10% of screen height = 60px)
+                let imgDanger = this.textures.get('danger_raw').getSourceImage();
+                let canvasDanger = this.textures.createCanvas('danger_soft', imgDanger.width, 60);
+                let ctxDanger = canvasDanger.getContext();
+                // Draw image scaled to height 60, keeping width for tiling
+                ctxDanger.drawImage(imgDanger, 0, 0, imgDanger.width, 60);
+                
+                let imgDataDanger = ctxDanger.getImageData(0, 0, imgDanger.width, 60);
+                let dataDanger = imgDataDanger.data;
+                // Fade out the top 30 pixels (half of the 60px height) for a soft smoke look
+                for (let y = 0; y < 60; y++) {
+                    for (let x = 0; x < imgDanger.width; x++) {
+                        let i = (y * imgDanger.width + x) * 4;
+                        if (y < 30) {
+                            let alpha = y / 30; // 0 at top, 1 at y=30
+                            dataDanger[i+3] = Math.floor(dataDanger[i+3] * alpha);
+                        }
+                    }
+                }
+                ctxDanger.putImageData(imgDataDanger, 0, 0);
+                canvasDanger.refresh();
+
+                // --- 1. SETUP ENVIRONMENT ---
+                // Vertical Scrolling Parallax Background
+                this.bg = this.add.tileSprite(400, 300, 800, 600, 'bg_raw').setTint(0x444455);
+                
+                // Visual Scrolling Walls
+                // We use tileSprites so they can scroll downwards seamlessly
+                this.leftWallVisual = this.add.tileSprite(125, 300, 250, 600, 'wall_raw').setTint(0x888899);
+                this.rightWallVisual = this.add.tileSprite(675, 300, 250, 600, 'wall_raw').setTint(0x888899);
+
+                // Physics Boundaries for Walls (so player doesn't fly off screen)
+                this.leftWall = this.add.rectangle(225, 300, 50, 600, 0x000000, 0);
+                this.physics.add.existing(this.leftWall, true);
+                
+                this.rightWall = this.add.rectangle(575, 300, 50, 600, 0x000000, 0);
+                this.physics.add.existing(this.rightWall, true);
+
+                // --- 2. SETUP HANDHOLDS ---
+                this.handholds = this.physics.add.group();
+                
+                // Initial Handholds so player doesn't fall immediately
+                this.spawnHandhold('left', 200);
+                this.spawnHandhold('right', 350);
+                this.spawnHandhold('left', 500);
+
+                // --- 3. SETUP PLAYER ---
+                // Spawn the player high up so they cleanly fall onto the first handhold
+                this.player = this.physics.add.sprite(270, 50, 'climber_sprite');
+                this.player.setGravityY(1200);
+                
+                // Adjust hitbox
+                this.player.body.setSize(fWidth * 0.5, fHeight * 0.9);
+                this.player.body.setOffset(fWidth * 0.25, fHeight * 0.1);
+
+                // Collisions
+                this.physics.add.collider(this.player, this.leftWall);
+                this.physics.add.collider(this.player, this.rightWall);
+                
+                // One-way collision for handholds (can jump up through them)
+                this.physics.add.collider(this.player, this.handholds, null, function(player, handhold) {
+                    return player.body.velocity.y > 0 && player.body.bottom <= handhold.body.top + 10;
+                }, this);
+
+                // Animations (Frame 0: Cling, Frames 1-3: Jumping/Reaching)
+                this.anims.create({ key: 'cling', frames: this.anims.generateFrameNumbers('climber_sprite', { start: 0, end: 0 }), frameRate: 10, repeat: -1 });
+                this.anims.create({ key: 'jump', frames: this.anims.generateFrameNumbers('climber_sprite', { start: 1, end: 3 }), frameRate: 10, repeat: -1 });
+                this.player.anims.play('cling', true);
+
+                // --- 3.5. VFX (SPARKS) ---
+                // We reuse the handhold texture scaled down extremely small for sparks
+                this.sparkEmitter = this.add.particles('handhold_clean').createEmitter({
+                    x: 0, y: 0,
+                    speed: { min: -200, max: 200 },
+                    angle: { min: 0, max: 360 },
+                    scale: { start: 0.1, end: 0 },
+                    blendMode: 'ADD',
+                    lifespan: 400,
+                    tint: 0xffaa00,
+                    gravityY: 800,
+                    on: false // only emit when we call explode()
+                });
+
+                // --- 4. DANGER ZONE ---
+                this.dangerZone = this.add.tileSprite(400, 600, 800, 60, 'danger_soft').setOrigin(0.5, 1);
+                this.dangerZone.setTint(0xff5555); // Ensure it looks red
+                this.dangerZone.setDepth(10); // Draw on top
+
+                // --- 5. INPUT ---
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.spaceBar = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+                if (window.Coach) this.time.delayedCall(700, () => window.Coach.cue('JUMP!', 'Jump to climb'));
+                // Report score to the FIT-ARCADE hub HUD.
+                this.time.addEvent({ delay: 250, loop: true, callback: () => { if (window.MotionBridge) window.MotionBridge.reportScore(this.score || 0); } });
+                
+                // --- 6. UI ---
+                this.score = 0;
+                this.scoreText = this.add.text(20, 20, 'Score: 0', { fontSize: '24px', fill: '#fff' }).setDepth(20);
+                
+                // Survival points
+                this.time.addEvent({
+                    delay: 100,
+                    callback: () => {
+                        this.score += 1;
+                        this.scoreText.setText('Score: ' + this.score);
+                    },
+                    loop: true
+                });
+            }
+
+            spawnHandhold(side, yOffset) {
+                // Left handholds stick out from left wall (x=270), Right stick out from right wall (x=530)
+                let x = (side === 'left') ? 270 : 530;
+                let y = yOffset || -50;
+                
+                let handhold = this.handholds.create(x, y, 'handhold_clean');
+                if (side === 'right') handhold.setFlipX(true);
+                handhold.setVelocityY(this.climbSpeed);
+                handhold.setImmovable(true);
+                handhold.body.allowGravity = false;
+                
+                // IMPORTANT: Phaser 3 one-way collision (jump through platforms)
+                handhold.body.checkCollision.down = false;
+                handhold.body.checkCollision.left = false;
+                handhold.body.checkCollision.right = false;
+            }
+
+            update(time, delta) {
+
+
+                // Check death (falling into the red smog at bottom of screen)
+                if (this.player.y > 550) {
+                    this.score = Math.max(0, this.score - 50);
+                    this.scoreText.setText('Score: ' + this.score);
+                    this.cameras.main.flash(200, 255, 0, 0);
+                    
+                    let hArr = this.handholds.getChildren();
+                    let nextHold = hArr.find(h => h.y < 500);
+                    if (nextHold) {
+                        this.player.x = nextHold.x;
+                        this.player.y = Math.max(100, nextHold.y - 60);
+                        this.player.body.setVelocity(0,0);
+                    } else {
+                        this.player.y = 100;
+                        this.player.body.setVelocity(0,0);
+                    }
+                }
+
+                // Procedural generation of handholds
+                // Track highest handhold
+                let minY = 600;
+                const D = window.MOTION_DIFFICULTY || 1; // hub-driven adaptive difficulty
+                this.handholds.getChildren().forEach(h => {
+                    h.setVelocityY(this.climbSpeed * D);
+                    if (h.y < minY) minY = h.y;
+                    if (h.y > 650) h.destroy(); // Cleanup
+                });
+
+                // If highest handhold has moved down far enough, spawn a new one!
+                // We reduced the gap from 200px to 120px to make it easily reachable!
+                if (minY > 70) {
+                    // Randomly choose left or right wall
+                    let side = (Math.random() > 0.5) ? 'left' : 'right';
+                    this.spawnHandhold(side, -50);
+                    
+                    // 30% chance to spawn on BOTH sides so the player has options!
+                    if (Math.random() < 0.3) {
+                        let otherSide = (side === 'left') ? 'right' : 'left';
+                        this.spawnHandhold(otherSide, -50);
+                    }
+                }
+
+                // Coach: jump straight up if the next handhold is on the same wall, else leap to it.
+                if (window.Coach) {
+                    const pLeft = this.player.x < 400;
+                    let next = null;
+                    this.handholds.getChildren().forEach(h => { if (h.y < this.player.y - 20 && (!next || h.y > next.y)) next = h; });
+                    if (next) {
+                        const nLeft = next.x < 400;
+                        const want = (nLeft === pLeft) ? 'jump' : (nLeft ? 'punchLeft' : 'punchRight');
+                        if (want !== this._coachMove) {
+                            this._coachMove = want;
+                            if (want === 'jump') window.Coach.cue('JUMP!', 'Jump');
+                            else if (want === 'punchLeft') window.Coach.cue('PUNCH LEFT!', 'Punch left');
+                            else window.Coach.cue('PUNCH RIGHT!', 'Punch right');
+                        }
+                    }
+                }
+
+                // JUMPING LOGIC
+                // Scroll Visuals
+                this.bg.tilePositionY -= (this.climbSpeed * 0.2) * (delta / 1000); // Parallax!
+                this.leftWallVisual.tilePositionY -= this.climbSpeed * D * (delta / 1000);
+                this.rightWallVisual.tilePositionY -= this.climbSpeed * D * (delta / 1000);
+                
+                // Animate Danger Zone (boiling smog effect)
+                this.dangerZone.tilePositionX += 50 * (delta/1000);
+
+                // Check landing spark
+                if (this.player.body.touching.down && !this.player.wasTouchingDown) {
+                    this.sparkEmitter.explode(15, this.player.x, this.player.bottom);
+                }
+                this.player.wasTouchingDown = this.player.body.touching.down;
+
+                // Player can only jump if touching a handhold (touching down)
+                if (this.player.body.touching.down) {
+                    this.player.anims.play('cling', true);
+                    
+                    // Face the center (if on left wall, flipX=false. If on right wall, flipX=true)
+                    if (this.player.x > 400) {
+                        this.player.setFlipX(true);
+                    } else {
+                        this.player.setFlipX(false);
+                    }
+
+                    // Jump Up
+                    if (Phaser.Input.Keyboard.JustDown(this.spaceBar)) {
+                        this.player.setVelocityY(-700);
+                        this.player.setVelocityX(0);
+                        this.player.anims.play('jump', true);
+                    }
+                    // Leap Right
+                    else if (Phaser.Input.Keyboard.JustDown(this.cursors.right) && this.player.x < 400) {
+                        this.player.setVelocityY(-650); // Jump slightly higher
+                        this.player.setVelocityX(500);  // Cross the gap faster!
+                        this.player.anims.play('jump', true);
+                    }
+                    // Leap Left
+                    else if (Phaser.Input.Keyboard.JustDown(this.cursors.left) && this.player.x > 400) {
+                        this.player.setVelocityY(-650);
+                        this.player.setVelocityX(-500);
+                        this.player.anims.play('jump', true);
+                    }
+                } else {
+                    // Air control (optional, currently strictly committed jumps)
+                    this.player.anims.play('jump', true);
+                }
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: document.body,
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 0 }, // Handled on sprite
+                    debug: false
+                }
+            },
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            scene: [PlayScene]
+        };
+
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>

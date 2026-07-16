@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hoverboard Alley MVP</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { overflow: hidden; margin: 0; padding: 0; width: 100%; height: 100%;  margin: 0; background-color: #111; color: white; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; }
+        canvas { width: 100%; height: 100%; }
+        #info { text-align: center; margin-top: 10px; }
+        h2 { color: #00ffff; margin-bottom: 5px; }
+    </style>
+    <link rel="stylesheet" href="css/game-frame.css">
+    <script>
+        window.MOTION_MAP = {
+            leanLeft:  { type: 'tap', code: 'ArrowLeft',  keyCode: 37, key: 'ArrowLeft' },
+            leanRight: { type: 'tap', code: 'ArrowRight', keyCode: 39, key: 'ArrowRight' }
+        };
+    </script>
+    <script src="js/motion-bridge.js"></script>
+</head>
+<body>
+
+    <script>
+        // =====================================================================
+        //  HOVERBOARD ALLEY — pseudo-3D lane runner
+        //  The player is fixed at the near plane; the world flows toward the
+        //  camera. Every object carries a depth `z`; screen position/size are
+        //  derived by 1/z perspective projection from the vanishing point.
+        // =====================================================================
+
+        // --- Perspective + world tuning ---------------------------------------
+        const VP_X = 400, VP_Y = 245;   // vanishing point (far end of the alley)
+        const PLAYER_Y = 505;           // hero's screen Y at the near plane
+        const LANE_SPREAD = 250;        // how far lanes fan out at the near plane
+        const NEAR = 1;                 // player's depth plane
+        const FAR = 13;                 // spawn depth (far distance)
+        const RECYCLE_Z = 0.5;          // once past this (behind camera) -> pool
+        const BASE_SPEED = 6;           // world depth-units travelled per second
+        const LANE_X = [-1, 0, 1];      // worldX for lanes 0 (Left) / 1 (Centre) / 2 (Right)
+
+        const OB_TYPES = {
+            barrier: { tex: 'hoverboard_barrier', w: 200, h: 110 },
+            mine:    { tex: 'hoverboard_mine',    w: 110, h: 110 },
+            drone:   { tex: 'hoverboard_drone',   w: 150, h: 100 }
+        };
+        const ORB = { tex: 'train_orb', w: 54, h: 54 };
+
+        class PlayScene extends Phaser.Scene {
+            constructor() { super({ key: 'PlayScene' }); }
+
+            preload() {
+                this.load.spritesheet('hover_idle_sheet', 'hover_idle.png', { frameWidth: 512, frameHeight: 512 });
+                this.load.image('hover_left', 'hover_left.png');
+                this.load.image('hover_right', 'hover_right.png');
+                this.load.image('hoverboard_barrier', 'hoverboard_barrier.png');
+                this.load.image('hoverboard_mine', 'hoverboard_mine.png');
+                this.load.image('hoverboard_drone', 'hoverboard_drone.png');
+                this.load.image('train_orb', 'train_orb.png');
+                this.load.image('alley_wall', 'alley_wall.png');
+                this.load.image('alley_arch', 'alley_arch.png');
+            }
+
+            create() {
+                this.gameOver = false;
+                this.score = 0;
+                this.invulnerable = false;
+
+                // --- Static alley backdrop (dimmed so the tunnel + obstacles pop) ---
+                this.bg = this.add.image(VP_X, VP_Y, 'alley_wall').setDisplaySize(800, 600).setDepth(-1000).setTint(0x9aa0b5);
+                // Soft "far light" glow at the vanishing point.
+                this.add.circle(VP_X, VP_Y, 95, 0x37e0ff, 0.12).setBlendMode(Phaser.BlendModes.ADD).setDepth(-900);
+
+                // Build a transparent-centre neon arch so the tunnel rings nest through each other.
+                if (!this.textures.exists('alley_arch_clear')) {
+                    const src = this.textures.get('alley_arch').getSourceImage();
+                    const cv = this.textures.createCanvas('alley_arch_clear', src.width, src.height);
+                    const cx = cv.getContext();
+                    cx.drawImage(src, 0, 0);
+                    const idata = cx.getImageData(0, 0, src.width, src.height);
+                    const d = idata.data;
+                    for (let i = 0; i < d.length; i += 4) {
+                        if (d[i] > 230 && d[i + 1] > 230 && d[i + 2] > 230) d[i + 3] = 0;
+                    }
+                    cx.putImageData(idata, 0, 0);
+                    cv.refresh();
+                }
+
+                // --- Object pools (reused sprites; never destroyed mid-run) ---
+                this.obPool = [];   // obstacles + orbs (distinguished by .kind)
+                this.archPool = []; // tunnel rings
+
+                // --- Player animation + sprite ---
+                this.anims.create({
+                    key: 'hover_idle',
+                    frames: this.anims.generateFrameNumbers('hover_idle_sheet', { start: 0, end: 3 }),
+                    frameRate: 8, repeat: -1
+                });
+                this.currentLane = 1;   // start centre
+                this.targetLane = 1;
+                this.laneInterp = 1;    // smooth (lerped) lane position
+                this.turning = false;
+
+                this.player = this.add.sprite(this.laneToX(1), PLAYER_Y, 'hover_idle_sheet');
+                this.player.play('hover_idle');
+                this.player.setDisplaySize(150, 150);
+                this.player.setDepth(1000);
+
+                // --- UI ---
+                this.scoreText = this.add.text(20, 20, 'Score: 0', { fontSize: '24px', fill: '#fff' }).setDepth(2000);
+
+                // --- Spawners ---
+                this.time.addEvent({ delay: 1100, callback: this.spawnWave, callbackScope: this, loop: true });
+                this.time.addEvent({ delay: 560,  callback: this.spawnArch, callbackScope: this, loop: true });
+
+                // Survival scoring.
+                this.time.addEvent({
+                    delay: 100, loop: true,
+                    callback: () => { if (!this.gameOver) { this.score += 1; this.scoreText.setText('Score: ' + this.score); } }
+                });
+
+                // --- Input ---
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.spaceBar = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+                // Report score to the FIT-ARCADE hub HUD.
+                this.time.addEvent({ delay: 250, loop: true, callback: () => { if (window.MotionBridge) window.MotionBridge.reportScore(this.score || 0); } });
+            }
+
+            // ---- perspective helpers ----
+            projScale(z) { return NEAR / z; }
+            laneToX(laneFloat) { return VP_X + (laneFloat - 1) * LANE_SPREAD; } // at the near plane (scale 1)
+
+            // ---- pooling ----
+            getObstacle() {
+                let o = this.obPool.find(s => !s.inUse);
+                if (!o) { o = this.add.sprite(0, 0, 'hoverboard_mine'); this.obPool.push(o); }
+                o.inUse = true; o.setActive(true).setVisible(true).setAlpha(1).clearTint();
+                return o;
+            }
+            getArch() {
+                let a = this.archPool.find(s => !s.inUse);
+                if (!a) { a = this.add.image(VP_X, VP_Y, 'alley_arch_clear'); this.archPool.push(a); }
+                a.inUse = true; a.setActive(true).setVisible(true);
+                return a;
+            }
+            recycle(s) { s.inUse = false; s.setActive(false).setVisible(false); }
+
+            // ---- spawning ----
+            spawnObstacle(lane) {
+                const t = Phaser.Utils.Array.GetRandom([OB_TYPES.barrier, OB_TYPES.mine, OB_TYPES.drone]);
+                const o = this.getObstacle();
+                o.setTexture(t.tex);
+                o.kind = 'obstacle'; o.baseW = t.w; o.baseH = t.h;
+                o.lane = lane; o.z = FAR; o.hitChecked = false;
+            }
+            spawnOrb(lane) {
+                const o = this.getObstacle();
+                o.setTexture(ORB.tex);
+                o.kind = 'orb'; o.baseW = ORB.w; o.baseH = ORB.h;
+                o.lane = lane; o.z = FAR; o.hitChecked = false;
+            }
+            // Lane-safe wave: block 1-2 lanes (NEVER all 3), maybe drop an orb in a free lane.
+            spawnWave() {
+                if (this.gameOver) return;
+                const lanes = Phaser.Utils.Array.Shuffle([0, 1, 2]);
+                const blockCount = Phaser.Math.Between(1, 2);
+                const blocked = lanes.slice(0, blockCount);
+                blocked.forEach(l => this.spawnObstacle(l));
+                const free = [0, 1, 2].filter(l => blocked.indexOf(l) === -1);
+                if (free.length && Math.random() < 0.6) this.spawnOrb(Phaser.Utils.Array.GetRandom(free));
+            }
+            spawnArch() {
+                if (this.gameOver) return;
+                const a = this.getArch();
+                a.z = FAR; a.setPosition(VP_X, VP_Y); a.setAlpha(0);
+            }
+
+            // ---- player lane movement ----
+            moveLane(dir) {
+                const nt = Phaser.Math.Clamp(this.targetLane + dir, 0, 2);
+                if (nt === this.targetLane) return;
+                this.targetLane = nt;
+                this.player.stop();
+                this.player.setTexture(dir < 0 ? 'hover_left' : 'hover_right');
+                this.turning = true;
+            }
+
+            collectOrb(x, y) {
+                this.score += 50;
+                this.scoreText.setText('Score: ' + this.score);
+                const pop = this.add.circle(x, y, 26, 0xffffff).setDepth(1500);
+                this.tweens.add({ targets: pop, scale: 2, alpha: 0, duration: 220, onComplete: () => pop.destroy() });
+            }
+
+            takeDamage() {
+                if (this.invulnerable) return;
+                this.score = Math.max(0, this.score - 50);
+                this.scoreText.setText('Score: ' + this.score);
+                this.cameras.main.shake(180, 0.018);
+                this.cameras.main.flash(180, 255, 40, 40);
+                this.invulnerable = true;
+                this.tweens.add({
+                    targets: this.player, alpha: 0.2, yoyo: true, repeat: 6, duration: 90,
+                    onComplete: () => { this.player.alpha = 1; this.invulnerable = false; }
+                });
+            }
+
+            update(time, delta) {
+                if (this.gameOver) {
+                    if (Phaser.Input.Keyboard.JustDown(this.spaceBar)) this.scene.restart();
+                    return;
+                }
+
+                const dt = delta / 1000;
+                const D = window.MOTION_DIFFICULTY || 1;         // hub-driven adaptive difficulty
+                const dz = BASE_SPEED * D * dt;
+
+                // --- Lane input (lean -> arrow keys via the motion bridge) ---
+                if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) this.moveLane(-1);
+                if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) this.moveLane(1);
+
+                // Smoothly lerp the hero to the target lane; snap + resume idle on arrival.
+                this.laneInterp += (this.targetLane - this.laneInterp) * Math.min(1, 12 * dt);
+                if (this.turning && Math.abs(this.targetLane - this.laneInterp) < 0.04) {
+                    this.laneInterp = this.targetLane;
+                    this.turning = false;
+                    this.player.play('hover_idle');
+                }
+                this.currentLane = Math.round(this.laneInterp);
+                this.player.x = this.laneToX(this.laneInterp);
+
+                // --- Tunnel arches (centred rings that grow out of the vanishing point) ---
+                for (const a of this.archPool) {
+                    if (!a.inUse) continue;
+                    a.z -= dz;
+                    const sc = this.projScale(a.z);
+                    a.setDisplaySize(820 * sc, 820 * sc);
+                    a.setDepth(-a.z); // nearer (smaller z) renders in front
+                    let alpha = 0.85;
+                    if (a.z > FAR - 2) alpha *= (FAR - a.z) / 2;   // fade in at spawn
+                    if (a.z < 1.6) alpha *= Math.max(0, a.z / 1.6); // fade out as it fills the screen
+                    a.setAlpha(alpha);
+                    if (a.z <= RECYCLE_Z) this.recycle(a);
+                }
+
+                // --- Obstacles + orbs ---
+                for (const o of this.obPool) {
+                    if (!o.inUse) continue;
+                    o.z -= dz;
+                    const sc = this.projScale(o.z);
+                    o.x = VP_X + LANE_X[o.lane] * LANE_SPREAD * sc;
+                    o.y = VP_Y + (PLAYER_Y - VP_Y) * sc;
+                    o.setDisplaySize(o.baseW * sc, o.baseH * sc);
+                    o.setDepth(100 - o.z); // above arches, nearer above farther
+
+                    // Collision / collection at the player's near plane.
+                    if (!o.hitChecked && o.z <= NEAR) {
+                        o.hitChecked = true;
+                        if (o.lane === this.currentLane) {
+                            if (o.kind === 'orb') { this.collectOrb(o.x, o.y); this.recycle(o); continue; }
+                            else { o.setTint(0xff5555); this.takeDamage(); }
+                        }
+                    }
+                    if (o.z <= RECYCLE_Z) this.recycle(o);
+                }
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: document.body,
+            scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+            scene: [PlayScene]
+        };
+
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>

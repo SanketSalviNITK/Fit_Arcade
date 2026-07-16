@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Jetpack Flappy Bird MVP</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { overflow: hidden; margin: 0; padding: 0; width: 100%; height: 100%;  margin: 0; background-color: #111; color: white; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; }
+        canvas { width: 100%; height: 100%; }
+        #info { text-align: center; margin-top: 10px; }
+        h2 { color: #00ffff; margin-bottom: 5px; }
+    </style>
+    <link rel="stylesheet" href="css/game-frame.css">
+    <script>
+        window.MOTION_MAP = {
+            armsOverhead: { type: 'tap', code: 'Space', keyCode: 32, key: ' ' },
+            jump:         { type: 'tap', code: 'Space', keyCode: 32, key: ' ' }
+        };
+    </script>
+    <script src="js/motion-bridge.js"></script>
+    <script src="js/coach.js"></script>
+</head>
+<body>
+
+    <script>
+        class PlayScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'PlayScene' });
+            }
+
+            preload() {
+                this.load.spritesheet('jetpack_thrust', 'jetpack_hero.png', { frameWidth: 512, frameHeight: 512 });
+                this.load.spritesheet('jetpack_fall', 'jetpack_hero_fall.png', { frameWidth: 512, frameHeight: 512 });
+                this.load.image('jetpack_pipe', 'jetpack_pipe.png');
+                this.load.image('jetpack_bg_sky', 'jetpack_bg_sky.png');
+                this.load.image('jetpack_bg_city', 'jetpack_bg_city.png');
+            }
+
+            create() {
+                this.gameOver = false;
+                this.score = 0;
+                this.gameSpeed = 250; // Background scroll speed (paced for sustained arm flapping)
+                this.invulnerable = false;
+
+                // --- ENVIRONMENT ---
+                this.bgSky = this.add.tileSprite(400, 300, 800, 600, 'jetpack_bg_sky');
+                this.bgCity = this.add.tileSprite(400, 300, 800, 600, 'jetpack_bg_city');
+
+                // --- UI ---
+                this.scoreText = this.add.text(20, 20, 'Score: 0', { fontSize: '24px', fill: '#fff' }).setDepth(30);
+
+                // --- ANIMATIONS ---
+                this.anims.create({ key: 'anim_thrust', frames: this.anims.generateFrameNumbers('jetpack_thrust', { start: 0, end: 3 }), frameRate: 12, repeat: -1 });
+                this.anims.create({ key: 'anim_fall', frames: this.anims.generateFrameNumbers('jetpack_fall', { start: 0, end: 3 }), frameRate: 12, repeat: -1 });
+
+                // --- PLAYER ---
+                this.player = this.add.sprite(200, 300, 'jetpack_fall');
+                this.player.setDisplaySize(120, 120); // Scale down the 512x512 sprite
+                this.player.setDepth(20);
+
+                // Enable Physics for Player
+                this.physics.add.existing(this.player);
+                // Center the hitbox within the 512x512 frame:
+                this.player.body.setSize(160, 260, true);
+                this.player.body.setGravityY(1000); // Strong gravity
+                this.player.body.setCollideWorldBounds(true);
+
+                // --- GROUPS ---
+                this.obstacles = this.add.group();
+                this.orbs = this.add.group();
+
+                // Spawners
+                this.spawnTimer = this.time.addEvent({
+                    delay: 2600, // Skyscraper spacing (paced for real arm flapping)
+                    callback: this.spawnObstacle,
+                    callbackScope: this,
+                    loop: true
+                });
+
+                this.time.addEvent({
+                    delay: 250, // Orb trail every 0.25s
+                    callback: this.spawnOrb,
+                    callbackScope: this,
+                    loop: true
+                });
+
+                // Survival points
+                this.time.addEvent({
+                    delay: 100,
+                    callback: () => {
+                        if (!this.gameOver) {
+                            this.score += 1;
+                            this.scoreText.setText('Score: ' + this.score);
+                        }
+                    },
+                    loop: true
+                });
+
+                // --- INPUT ---
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.spaceBar = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+                if (window.Coach) this.time.delayedCall(700, () => window.Coach.cue('FLAP!', 'Raise your arms to fly'));
+                // Report score to the FIT-ARCADE hub HUD.
+                this.time.addEvent({ delay: 250, loop: true, callback: () => { if (window.MotionBridge) window.MotionBridge.reportScore(this.score || 0); } });
+
+                // Fire Jetpack on just-down
+                this.input.keyboard.on('keydown-UP', this.fireJetpack, this);
+                this.input.keyboard.on('keydown-SPACE', this.fireJetpack, this);
+            }
+
+            fireJetpack() {
+                if (this.gameOver) return;
+                // Upward velocity burst
+                this.player.body.setVelocityY(-400);
+
+                // Visual thrust is now handled natively by the sprite animation in the update loop
+            }
+
+            spawnObstacle() {
+                if (this.gameOver) return;
+
+                const D = window.MOTION_DIFFICULTY || 1; // hub-driven adaptive difficulty
+                let gapHeight = 250; // Very generous gap for fitness game
+                // Random Y position for the TOP of the gap
+                let gapY = Phaser.Math.Between(50, 600 - gapHeight - 50);
+
+                // Top Pillar
+                let topHeight = gapY;
+                let topPillar = this.add.tileSprite(850, topHeight / 2, 100, topHeight, 'jetpack_pipe');
+                topPillar.setFlipY(true); // Flip top pipe
+                topPillar.tileScaleX = 100 / 385;
+                topPillar.tileScaleY = 100 / 385;
+
+                // Bottom Pillar
+                let bottomHeight = 600 - (gapY + gapHeight);
+                let bottomPillar = this.add.tileSprite(850, 600 - (bottomHeight / 2), 100, bottomHeight, 'jetpack_pipe');
+                bottomPillar.tileScaleX = 100 / 385;
+                bottomPillar.tileScaleY = 100 / 385;
+
+                this.physics.add.existing(topPillar);
+                this.physics.add.existing(bottomPillar);
+
+                topPillar.body.setVelocityX(-this.gameSpeed * D);
+                bottomPillar.body.setVelocityX(-this.gameSpeed * D);
+
+                topPillar.body.setImmovable(true);
+                topPillar.body.setAllowGravity(false);
+                bottomPillar.body.setImmovable(true);
+                bottomPillar.body.setAllowGravity(false);
+
+                this.obstacles.add(topPillar);
+                this.obstacles.add(bottomPillar);
+            }
+
+            spawnOrb() {
+                if (this.gameOver) return;
+
+                // Sine wave logic for Y position
+                // time.now / 1000 converts to seconds.
+                // We want a slow wave. 1 full wave every ~4 seconds.
+                let waveSpeed = this.time.now / 800;
+                let amplitude = 200; // How high/low the wave goes from center
+                let centerY = 300;
+
+                let orbY = centerY + Math.sin(waveSpeed) * amplitude;
+
+                let orb = this.add.circle(850, orbY, 12, 0xffd700);
+                orb.setStrokeStyle(2, 0xffaa00);
+                orb.setDepth(15);
+
+                this.physics.add.existing(orb);
+                orb.body.setVelocityX(-this.gameSpeed * (window.MOTION_DIFFICULTY || 1));
+                orb.body.setAllowGravity(false);
+
+                this.orbs.add(orb);
+            }
+
+            takeDamage() {
+                if (this.invulnerable) return;
+
+                this.score = Math.max(0, this.score - 50);
+                this.scoreText.setText('Score: ' + this.score);
+
+                this.cameras.main.shake(200, 0.02);
+                this.cameras.main.flash(200, 255, 0, 0);
+
+                this.invulnerable = true;
+
+                // Invulnerability flicker
+                this.tweens.add({
+                    targets: this.player,
+                    alpha: 0.2,
+                    yoyo: true,
+                    repeat: 7,
+                    duration: 100,
+                    onComplete: () => {
+                        this.player.alpha = 1;
+                        this.invulnerable = false;
+                    }
+                });
+            }
+
+            collectOrb(player, orb) {
+                orb.destroy();
+                this.score += 50;
+                this.scoreText.setText('Score: ' + this.score);
+
+                let pop = this.add.circle(orb.x, orb.y, 20, 0xffffff);
+                pop.setDepth(20);
+                this.tweens.add({
+                    targets: pop,
+                    scale: 1.5,
+                    alpha: 0,
+                    duration: 200,
+                    onComplete: () => { pop.destroy(); }
+                });
+            }
+
+            update(time, delta) {
+                if (this.gameOver) {
+                    if (Phaser.Input.Keyboard.JustDown(this.spaceBar)) this.scene.restart();
+                    return;
+                }
+
+                // Rhythmic mode: lock spawn cadence to the game's music beat.
+                if (this.spawnTimer && window.MOTION_RHYTHM && window.MOTION_RHYTHM.mode === 'rhythmic' && window.MOTION_RHYTHM.beatMs) {
+                    this.spawnTimer.delay = window.MOTION_RHYTHM.beatMs;
+                }
+
+                // Scroll background cityscape slowly
+                this.bgSky.tilePositionX += (this.gameSpeed * 0.05) * (delta / 1000);
+                this.bgCity.tilePositionX += (this.gameSpeed * 0.2) * (delta / 1000);
+
+                // Update Animation based on vertical velocity
+                if (this.player.body.velocity.y < 0) {
+                    if (this.player.anims.currentAnim?.key !== 'anim_thrust') {
+                        this.player.anims.play('anim_thrust', true);
+                    }
+                } else {
+                    if (this.player.anims.currentAnim?.key !== 'anim_fall') {
+                        this.player.anims.play('anim_fall', true);
+                    }
+                }
+
+                // Rotate player slightly based on velocity
+                this.player.setRotation(this.player.body.velocity.y * 0.001);
+
+                // Check Collisions
+                this.physics.overlap(this.player, this.orbs, this.collectOrb, null, this);
+
+                if (!this.invulnerable) {
+                    this.physics.overlap(this.player, this.obstacles, this.takeDamage, null, this);
+                }
+
+                // Clean up off-screen objects
+                this.obstacles.getChildren().forEach(obs => {
+                    if (obs.x < -100) obs.destroy();
+                });
+                this.orbs.getChildren().forEach(orb => {
+                    if (orb.x < -100) orb.destroy();
+                });
+
+                // Floor/Ceiling collision
+                if (this.player.y > 580 || this.player.y < 20) {
+                    this.takeDamage();
+                    // Bounce off slightly so they don't instadie all 3 lives
+                    if (this.player.y > 580) this.player.body.setVelocityY(-500);
+                    if (this.player.y < 20) this.player.body.setVelocityY(200);
+                }
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: document.body,
+            physics: {
+                default: 'arcade',
+                arcade: { gravity: { y: 0 }, debug: false }
+            },
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            scene: [PlayScene]
+        };
+
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>

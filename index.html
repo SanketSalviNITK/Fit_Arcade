@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIT-ARCADE // Motion Workout Games</title>
+    <!-- CSS Stylesheet -->
+    <link rel="stylesheet" href="css/style.css">
+    
+    <!-- MediaPipe Pose and Camera CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <!-- Ambient animated background: drifting aurora + perspective synthwave grid -->
+    <div id="bg-fx" aria-hidden="true"></div>
+
+    <!-- CRT Overlay Filter for Retro Arcade Feel -->
+    <div class="crt-overlay"></div>
+
+    <!-- Arcade Header -->
+    <header class="arcade-header">
+        <div>
+            <h1 class="arcade-title">FIT-ARCADE</h1>
+            <div class="arcade-subtitle">MOTION-CONTROLLED WORKOUT CABIN</div>
+        </div>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <button id="btn-settings-open" class="btn-arcade pink" style="padding: 0.5rem 1rem; font-size: 0.65rem;">SETTINGS</button>
+            <button id="btn-sound-toggle" class="btn-arcade yellow" style="padding: 0.5rem 1rem; font-size: 0.65rem;">Sound: ON</button>
+            <div style="font-family: var(--font-pixel); font-size: 0.7rem; color: var(--success-green); display: flex; align-items: center; gap: 0.4rem;">
+                <span class="status-dot" id="system-status-dot" style="background-color: var(--success-green); box-shadow: 0 0 8px var(--success-green);"></span>
+                <span id="system-status-text">SYSTEM ACTIVE</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Settings Modal Overlay -->
+    <div id="settings-modal" class="modal-overlay">
+        <div class="arcade-panel settings-panel">
+            <div class="panel-header">
+                <span>SYSTEM SETTINGS</span>
+                <button id="btn-settings-close" class="btn-arcade pink" style="padding: 0.35rem 0.8rem; font-size: 0.6rem;">CLOSE</button>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 2rem;">
+                <!-- Audio Controls -->
+                <div class="settings-group">
+                    <h3 style="font-family: var(--font-pixel); font-size: 0.8rem; color: var(--accent-yellow); margin-bottom: 1rem;">AUDIO</h3>
+                    <div class="slider-row">
+                        <label>MASTER VOL</label>
+                        <input type="range" id="slider-master-vol" class="neon-slider" min="0" max="1" step="0.1" value="1">
+                    </div>
+                    <div class="slider-row">
+                        <label>SFX VOL</label>
+                        <input type="range" id="slider-sfx-vol" class="neon-slider pink" min="0" max="1" step="0.1" value="1">
+                    </div>
+                </div>
+
+                <!-- Accessibility Controls -->
+                <div class="settings-group">
+                    <h3 style="font-family: var(--font-pixel); font-size: 0.8rem; color: var(--primary-cyan); margin-bottom: 1rem;">ACCESSIBILITY</h3>
+                    <div class="slider-row">
+                        <label>JUMP SENSITIVITY</label>
+                        <input type="range" id="slider-jump-sens" class="neon-slider" min="0.5" max="2.0" step="0.1" value="1.0">
+                    </div>
+                    <div class="slider-row">
+                        <label>SQUAT SENSITIVITY</label>
+                        <input type="range" id="slider-squat-sens" class="neon-slider" min="0.5" max="2.0" step="0.1" value="1.0">
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem;">
+                        <label style="font-size: 0.85rem; color: #fff;">SEATED MODE (Bypass lower-body)</label>
+                        <input type="checkbox" id="toggle-seated-mode" class="neon-toggle">
+                    </div>
+                </div>
+
+                <!-- Biometrics: personalize HR zones + the effort model -->
+                <div class="settings-group">
+                    <h3 style="font-family: var(--font-pixel); font-size: 0.8rem; color: var(--primary-neon-pink); margin-bottom: 1rem;">BIOMETRICS</h3>
+                    <div class="slider-row">
+                        <label>AGE (sets HR zones)</label>
+                        <input type="number" id="input-age" class="neon-number" min="10" max="99" value="30">
+                    </div>
+                    <div class="slider-row">
+                        <label>RESTING HR (bpm)</label>
+                        <input type="number" id="input-resthr" class="neon-number" min="35" max="110" value="65">
+                    </div>
+                    <div class="slider-row">
+                        <label>FITNESS LEVEL</label>
+                        <select id="input-fitness" class="neon-number" style="width: auto; padding: 0.4rem 0.5rem;">
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate" selected>Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                        </select>
+                    </div>
+                    <div class="slider-row">
+                        <label>BASELINE PACE</label>
+                        <span id="pace-readout" style="font-family: var(--font-pixel); font-size: 0.72rem; color: var(--primary-cyan); text-shadow: 0 0 8px var(--primary-cyan);">1.00x</span>
+                    </div>
+                </div>
+
+                <!-- Research Logging: OFF by default. Captures pose + physiology labels,
+                     time-stamped for later pairing with an external WiFi/CSI sensing node. -->
+                <div class="settings-group">
+                    <h3 style="font-family: var(--font-pixel); font-size: 0.8rem; color: var(--success-green); margin-bottom: 1rem;">RESEARCH LOGGING</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <label style="font-size: 0.85rem; color: #fff;">ENABLE LOGGING (pose + physio labels)</label>
+                        <input type="checkbox" id="toggle-research-logging" class="neon-toggle">
+                    </div>
+                    <div class="slider-row">
+                        <label>COLLECTOR URL (optional — live stream)</label>
+                        <input type="text" id="input-research-collector" class="neon-number" style="width: 100%;" placeholder="http://192.168.1.50:8787">
+                    </div>
+                    <button id="btn-research-download" class="btn-arcade yellow" style="width: 100%; padding: 0.6rem; font-size: 0.7rem;">DOWNLOAD LOG (.jsonl)</button>
+                    <p style="font-size: 0.65rem; color: var(--text-muted); margin-top: 0.7rem; line-height: 1.5;">Off by default and zero overhead when disabled. See docs/research-logging.md.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container">
+        
+        <!-- ================= HOME DASHBOARD ================= -->
+        <main id="screen-home" class="screen active">
+            <div class="dashboard-grid">
+                <!-- Left Panel: Workout Regimes & Quick Play -->
+                <div style="display: flex; flex-direction: column; gap: 2rem;">
+                    <!-- Progress / Profile -->
+                    <div class="arcade-panel">
+                        <div class="panel-header">
+                            <span>YOUR PROGRESS</span>
+                            <span id="prog-streak" class="prog-streak">NO STREAK YET</span>
+                        </div>
+                        <div class="prog-level-row">
+                            <div class="prog-level-badge">LVL&nbsp;<span id="prog-level">1</span></div>
+                            <div class="prog-xp">
+                                <div class="prog-xp-bar"><div id="prog-xp-fill" class="prog-xp-fill"></div></div>
+                                <div id="prog-xp-text" class="prog-xp-text">0 / 500 XP</div>
+                            </div>
+                        </div>
+                        <div class="prog-stats">
+                            <div class="prog-stat"><span id="prog-workouts">0</span><label>WORKOUTS</label></div>
+                            <div class="prog-stat"><span id="prog-reps">0</span><label>TOTAL REPS</label></div>
+                            <div class="prog-stat"><span id="prog-cal">0</span><label>TOTAL KCAL</label></div>
+                        </div>
+                        <div id="prog-history" class="prog-history"></div>
+                    </div>
+
+                    <!-- Game Launcher Grid -->
+                    <div class="arcade-panel">
+                        <div class="panel-header">
+                            <span>SELECT WORKOUT MODULE</span>
+                            <span style="font-size: 0.6rem; color: var(--accent-yellow);">7 SYSTEMS ONLINE</span>
+                        </div>
+                        
+                        <button onclick="startCircuit()" class="btn-arcade yellow" style="width: 100%; padding: 1rem; margin-bottom: 1.5rem; font-size: 1rem;">▶ START FULL-BODY CIRCUIT</button>
+                        
+                        <!-- Embedded Launcher Grid using the new CSS classes -->
+                        <div class="launcher-grid" style="grid-template-columns: repeat(2, 1fr); gap: 1.5rem; padding: 0;">
+                            
+                            <!-- Game 1 -->
+                            <div class="game-card" onclick="launchMVP('phaser-rooftop-demo.html')" style="cursor: pointer;">
+                                <div class="game-target">Legs / Cardio</div>
+                                <h3 class="game-title" style="font-size: 0.85rem;">ROOFTOP RUNNER</h3>
+                                <p class="game-desc" style="font-size: 0.75rem;">Sprint across neon rooftops. Jump and Squat to dodge.</p>
+                                <div class="btn-arcade" style="text-align: center; margin-top: auto; padding: 0.5rem; font-size: 0.65rem;">LAUNCH</div>
+                            </div>
+
+                            <!-- Game 2 -->
+                            <div class="game-card" onclick="launchMVP('phaser-climber-demo.html')" style="cursor: pointer;">
+                                <div class="game-target">Shoulders / Lats</div>
+                                <h3 class="game-title" style="font-size: 0.85rem;">NEON WALL CLIMBER</h3>
+                                <p class="game-desc" style="font-size: 0.75rem;">Scale a massive skyscraper using Jumping Jacks and Lateral Punches.</p>
+                                <div class="btn-arcade" style="text-align: center; margin-top: auto; padding: 0.5rem; font-size: 0.65rem;">LAUNCH</div>
+                            </div>
+
+                            <!-- Game 3 -->
+                            <div class="game-card" onclick="launchMVP('phaser-rope-demo.html')" style="cursor: pointer;">
+                                <div class="game-target">Endurance / Core</div>
+                                <h3 class="game-title" style="font-size: 0.85rem;">INDUSTRIAL ROPE</h3>
+                                <p class="game-desc" style="font-size: 0.75rem;">Climb heavy cables with High Knees and Skater Jumps.</p>
+                                <div class="btn-arcade" style="text-align: center; margin-top: auto; padding: 0.5rem; font-size: 0.65rem;">LAUNCH</div>
+                            </div>
+
+                            <!-- Game 4 -->
+                            <div class="game-card" onclick="launchMVP('phaser-brawler-demo.html')" style="cursor: pointer;">
+                                <div class="game-target">Arms / Agility</div>
+                                <h3 class="game-title" style="font-size: 0.85rem;">STREET BRAWLER</h3>
+                                <p class="game-desc" style="font-size: 0.75rem;">Fight off cyber-thugs using Left/Right Jabs and Squats.</p>
+                                <div class="btn-arcade" style="text-align: center; margin-top: auto; padding: 0.5rem; font-size: 0.65rem;">LAUNCH</div>
+                            </div>
+
+                            <!-- Game 5 -->
+                            <div class="game-card" onclick="launchMVP('phaser-train-demo.html')" style="cursor: pointer;">
+                                <div class="game-target">Chest / Triceps</div>
+                                <h3 class="game-title" style="font-size: 0.85rem;">CYBER-TRAIN CRAWL</h3>
+                                <p class="game-desc" style="font-size: 0.75rem;">Crawl atop a speeding train doing Push-ups and Planks.</p>
+                                <div class="btn-arcade" style="text-align: center; margin-top: auto; padding: 0.5rem; font-size: 0.65rem;">LAUNCH</div>
+                            </div>
+
+                            <!-- Game 6 -->
+                            <div class="game-card" onclick="launchMVP('phaser-jetpack-demo.html')" style="cursor: pointer;">
+                                <div class="game-target">Shoulders / Aerobic</div>
+                                <h3 class="game-title" style="font-size: 0.85rem;">JETPACK FLAPPY</h3>
+                                <p class="game-desc" style="font-size: 0.75rem;">Manage altitude via rapid Arm Circles to fly through gaps.</p>
+                                <div class="btn-arcade" style="text-align: center; margin-top: auto; padding: 0.5rem; font-size: 0.65rem;">LAUNCH</div>
+                            </div>
+
+                            <!-- Game 7 -->
+                            <div class="game-card" onclick="launchMVP('three-hoverboard-demo-v2.html')" style="cursor: pointer; grid-column: 1 / -1;">
+                                <div class="game-target">Obliques / Core</div>
+                                <h3 class="game-title" style="font-size: 0.85rem;">HOVERBOARD ALLEY</h3>
+                                <p class="game-desc" style="font-size: 0.75rem;">Pilot down a narrow alley. Perform Standing Side Crunches to steer left and right to dodge obstacles.</p>
+                                <div class="btn-arcade pink" style="text-align: center; margin-top: auto; padding: 0.5rem; font-size: 0.65rem;">LAUNCH</div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right column: webcam setup + today's plan -->
+                <div class="home-right">
+                    <!-- Camera & Calibration Quick Preview -->
+                    <div class="arcade-panel" style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        <div class="panel-header">
+                            <span>WEBCAM SETUP</span>
+                        </div>
+
+                        <div class="camera-preview-box">
+                            <div id="home-camera-loading" class="camera-loading-overlay">
+                                <div class="spinner"></div>
+                                <p style="font-family: var(--font-pixel); font-size: 0.65rem; color: var(--primary-cyan);">STARTING CAMERA...</p>
+                            </div>
+                            <video id="home-video" autoplay muted playsinline></video>
+                            <canvas id="home-canvas"></canvas>
+                        </div>
+
+                        <div style="text-align: center;">
+                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.2rem; line-height: 1.4;">
+                                Stand 5–8 feet away from the webcam until your head, arms, and hips are completely within frame.
+                            </p>
+                            <button id="btn-goto-calibration" class="btn-arcade yellow" style="width: 100%;" onclick="app.goToCalibration()">CALIBRATE CAMERA</button>
+                        </div>
+                    </div>
+
+                    <!-- Today's Workout Plan (populated from WORKOUT_PROGRAM) -->
+                    <div class="arcade-panel plan-panel">
+                        <div class="panel-header">
+                            <span>TODAY'S PLAN</span>
+                            <span id="plan-duration" class="plan-duration">~8 MIN</span>
+                        </div>
+                        <div class="plan-duration-control">
+                            <span class="pdc-label">WORKOUT LENGTH</span>
+                            <div class="pdc-stepper">
+                                <button type="button" class="pdc-btn" onclick="adjustDuration(-1)" aria-label="decrease">&minus;</button>
+                                <input id="input-duration" class="pdc-input" type="number" min="2" max="30" step="1" value="8"
+                                       onchange="onDurationChange()" title="Total circuit length. Every game scales to fit.">
+                                <span class="pdc-unit">MIN</span>
+                                <button type="button" class="pdc-btn" onclick="adjustDuration(1)" aria-label="increase">+</button>
+                            </div>
+                        </div>
+                        <div class="movement-mode-control">
+                            <span class="mmc-label">MOVEMENT STYLE</span>
+                            <div class="mmc-seg" id="mmc-seg" role="group" aria-label="Movement style">
+                                <button type="button" class="mmc-opt" data-mode="random" onclick="setRhythmMode('random')" title="Obstacles arrive at varied, game-driven timing">RANDOM</button>
+                                <button type="button" class="mmc-opt" data-mode="rhythmic" onclick="setRhythmMode('rhythmic')" title="Obstacles arrive on a steady beat, synced to the game's music">RHYTHMIC</button>
+                            </div>
+                        </div>
+                        <div id="plan-phases" class="plan-phases"></div>
+                        <button class="btn-arcade yellow" style="width: 100%; margin-top: 1.4rem;" onclick="startWorkoutFlow()">▶ START THIS WORKOUT</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- ================= CALIBRATION SCREEN ================= -->
+        <section id="screen-calibration" class="screen">
+            <div class="arcade-panel" style="max-width: 900px; margin: 0 auto;">
+                <div class="panel-header">
+                    <span>CAMERA & POSE CALIBRATION</span>
+                    <button class="btn-arcade pink" onclick="app.goToHome()" style="padding: 0.35rem 0.8rem; font-size: 0.6rem;">EXIT</button>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 2rem; margin-top: 0.6rem; align-items: start;">
+                    <!-- Video Calibration Window -->
+                    <div class="camera-preview-box" style="aspect-ratio: 4/3; border-color: var(--primary-neon-pink);">
+                        <div id="calibration-loading" class="camera-loading-overlay">
+                            <div class="spinner"></div>
+                            <p style="font-family: var(--font-pixel); font-size: 0.65rem; color: var(--primary-neon-pink);">INITIALIZING SKELETON DETECTOR...</p>
+                        </div>
+                        <video id="calibration-video" autoplay muted playsinline></video>
+                        <canvas id="calibration-canvas"></canvas>
+                    </div>
+
+                    <!-- Step Lists & Guides -->
+                    <div style="display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <h2 style="font-family: var(--font-pixel); font-size: 0.9rem; color: #fff; margin-bottom: 0.6rem;">CALIBRATION PROTOCOL</h2>
+                            <p style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.45; margin-bottom: 0.7rem;">
+                                Let's test your movement range. Follow the prompts one move at a time.
+                            </p>
+
+                            <!-- One-at-a-time progress wizard (replaces the scrolling checklist) -->
+                            <div class="cal-progress" id="cal-progress">
+                                <div class="cal-progress-top">
+                                    <span class="cal-progress-label" id="cal-progress-label">STEP 1 / 21</span>
+                                    <span class="cal-progress-pct" id="cal-progress-pct">0%</span>
+                                </div>
+                                <div class="cal-progress-track"><div class="cal-progress-fill" id="cal-progress-fill"></div></div>
+                                <div class="cal-current-step">
+                                    <span class="cal-current-dot"></span>
+                                    <span class="cal-current-name" id="cal-current-name">Press START to begin</span>
+                                </div>
+                                <div class="cal-next-step" id="cal-next-step"></div>
+                            </div>
+
+                            <div class="cal-guide-list">
+                                <div class="cal-guide-item" id="cal-step-visible">
+                                    <span class="status-dot"></span>
+                                    <span>Body fully visible (Head & Hips in frame)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-squat">
+                                    <span class="status-dot"></span>
+                                    <span>Deep Squat (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-jump">
+                                    <span class="status-dot"></span>
+                                    <span>Jump (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-highknee-left">
+                                    <span class="status-dot"></span>
+                                    <span>High Knee Left (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-highknee-right">
+                                    <span class="status-dot"></span>
+                                    <span>High Knee Right (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-kick-left">
+                                    <span class="status-dot"></span>
+                                    <span>Kick Left (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-kick-right">
+                                    <span class="status-dot"></span>
+                                    <span>Kick Right (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-lean-left">
+                                    <span class="status-dot"></span>
+                                    <span>Lean Left (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-lean-right">
+                                    <span class="status-dot"></span>
+                                    <span>Lean Right (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-punch-left">
+                                    <span class="status-dot"></span>
+                                    <span>Punch Left (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-punch-right">
+                                    <span class="status-dot"></span>
+                                    <span>Punch Right (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-crosspunch-left">
+                                    <span class="status-dot"></span>
+                                    <span>Cross Punch Left (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-crosspunch-right">
+                                    <span class="status-dot"></span>
+                                    <span>Cross Punch Right (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-guard">
+                                    <span class="status-dot"></span>
+                                    <span>Guard / Block (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-uppercut-left">
+                                    <span class="status-dot"></span>
+                                    <span>Uppercut Left (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-uppercut-right">
+                                    <span class="status-dot"></span>
+                                    <span>Uppercut Right (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-curl-left">
+                                    <span class="status-dot"></span>
+                                    <span>Bicep Curl Left (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-curl-right">
+                                    <span class="status-dot"></span>
+                                    <span>Bicep Curl Right (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-widestance">
+                                    <span class="status-dot"></span>
+                                    <span>Wide Stance (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-arms-overhead">
+                                    <span class="status-dot"></span>
+                                    <span>Arms Overhead (0/3)</span>
+                                </div>
+                                <div class="cal-guide-item" id="cal-step-pushup">
+                                    <span class="status-dot"></span>
+                                    <span>Standing Push-up (0/3)</span>
+                                </div>
+                            </div>
+
+                            <!-- Interactive Visual Aid -->
+                            <div class="visual-aid-container">
+                                <canvas id="visual-aid-canvas" width="240" height="120" style="display: block; width: 160px; height: 80px;"></canvas>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div id="calibration-feedback" style="background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.2); border-radius: 6px; padding: 0.7rem; margin-bottom: 0.9rem; min-height: 52px; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--primary-cyan); font-family: var(--font-pixel); font-size: 0.7rem; line-height: 1.5;">
+                                STAND STILL IN FRONT OF THE CAMERA AND PRESS 'START CALIBRATION'
+                            </div>
+                            <!-- One button drives the whole flow: START CALIBRATION -> (running) -> CONTINUE/START WORKOUT -->
+                            <button id="btn-calibration-action" class="btn-arcade yellow" style="width: 100%;" onclick="app.calibrationAction()">START CALIBRATION</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= GAMEPLAY SCREEN ================= -->
+        <section id="screen-game" class="screen">
+            <div class="game-screen-layout">
+                <!-- Left: animated stick-figure demo of the move you're expected to make -->
+                <div class="game-demo-rail">
+                    <div class="rail-cam-label"><span class="status-dot" style="background: var(--primary-neon-pink); box-shadow: 0 0 8px var(--primary-neon-pink);"></span> DO THIS MOVE</div>
+                    <div class="camera-preview-box move-demo-box">
+                        <canvas id="move-demo-canvas" width="300" height="400"></canvas>
+                    </div>
+                    <div class="move-demo-label" id="move-demo-label">GET READY</div>
+                </div>
+
+                <!-- The neon arcade stage: marquee HUD + game viewport in one frame -->
+                <div class="game-stage" id="game-stage">
+                    <!-- Marquee: game title (left) + live fitness stats (right) -->
+                    <div class="game-marquee">
+                        <div class="game-marquee-title" id="hud-title">FIT-ARCADE</div>
+                        <div id="motion-hud" class="motion-hud">
+                            <div class="motion-hud-stat" id="hud-bpm-stat"><span class="motion-hud-label">♥ BPM</span><span id="hud-bpm" class="motion-hud-value">--</span></div>
+                            <div class="motion-hud-stat"><span class="motion-hud-label">REPS</span><span id="hud-reps" class="motion-hud-value">0</span></div>
+                            <div class="motion-hud-stat"><span class="motion-hud-label">SCORE</span><span id="hud-score" class="motion-hud-value">0</span></div>
+                            <div class="motion-hud-stat"><span class="motion-hud-label">KCAL</span><span id="hud-kcal" class="motion-hud-value">0</span></div>
+                            <div class="motion-hud-stat"><span class="motion-hud-label">TIME</span><span id="hud-time" class="motion-hud-value">00:00</span></div>
+                            <div class="motion-hud-stat" id="hud-effort-stat"><span class="motion-hud-label">EFFORT</span><span id="hud-effort" class="motion-hud-value">0%</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Game viewport: aspect-ratio matches the game so the canvas fills edge-to-edge -->
+                    <div class="game-viewport" id="game-viewport">
+                        <!-- Circuit Manager Overlays -->
+                        <div id="circuit-hud" class="circuit-hud">
+                            <div class="circuit-hud-label">TIME REMAINING</div>
+                            <div id="circuit-timer" class="circuit-hud-timer">00:45</div>
+                        </div>
+                        <div id="circuit-breather" class="circuit-breather">
+                            <div class="breather-title">REST & RECOVER</div>
+                            <div id="breather-timer" class="breather-countdown">00:15</div>
+                            <div class="breather-next-label">PREPARING NEXT MODULE:</div>
+                            <div id="breather-next-game" class="breather-next-game">INDUSTRIAL ROPE SWINGER</div>
+                        </div>
+                        <iframe id="game-frame" src=""></iframe>
+                    </div>
+                </div>
+
+                <!-- Slim control rail: live pose feedback + quit -->
+                <div class="game-rail">
+                    <div class="arcade-panel" style="padding: 1rem;">
+                        <div class="rail-cam-label"><span class="status-dot" style="background: var(--success-green); box-shadow: 0 0 8px var(--success-green);"></span> YOU · TRACKING</div>
+                        <div class="camera-preview-box" style="aspect-ratio: 4/3; border-style: solid;">
+                            <video id="game-video" autoplay muted playsinline></video>
+                            <canvas id="game-canvas-pose" width="640" height="480"></canvas>
+                        </div>
+                    </div>
+                    <div class="arcade-panel pink" style="padding: 1.1rem; display: flex; flex-direction: column; gap: 1.2rem;">
+                        <div id="game-instructions-text" class="rail-instructions">
+                            <p style="color: var(--primary-neon-pink); margin-bottom: 0.6rem;">MOVE TO PLAY</p>
+                            <p style="color: #fff;">Jump, squat &amp; punch in front of the camera to control the game.</p>
+                        </div>
+                        <button class="btn-arcade pink" onclick="quitMVP()">QUIT GAME</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ================= WORKOUT SUMMARY SCREEN ================= -->
+        <section id="screen-summary" class="screen">
+            <div class="arcade-panel summary-container">
+                <h2 class="summary-title" id="summary-headline">WORKOUT COMPLETE!</h2>
+                <div class="summary-subtitle" id="summary-subtitle">FULL-BODY INTERMEDIATE</div>
+                <div class="summary-xp" id="summary-xp"></div>
+                
+                <div class="stat-grid">
+                    <div class="stat-box">
+                        <h4>Total Score</h4>
+                        <p id="summary-score">000,000</p>
+                    </div>
+                    <div class="stat-box">
+                        <h4>Reps Performed</h4>
+                        <p id="summary-reps">0</p>
+                    </div>
+                    <div class="stat-box">
+                        <h4>Time Active</h4>
+                        <p id="summary-time">00:00</p>
+                    </div>
+                    <div class="stat-box">
+                        <h4>Est. Calories</h4>
+                        <p id="summary-calories">0 kcal</p>
+                    </div>
+                    <div class="stat-box">
+                        <h4>Avg Heart Rate</h4>
+                        <p id="summary-avghr">-- bpm</p>
+                    </div>
+                    <div class="stat-box">
+                        <h4>Peak Heart Rate</h4>
+                        <p id="summary-peakhr">-- bpm</p>
+                    </div>
+                </div>
+
+                <div class="share-card-wrap">
+                    <canvas id="share-card" width="540" height="675"></canvas>
+                </div>
+
+                <div class="summary-actions">
+                    <button class="btn-arcade" onclick="downloadShareCard()">DOWNLOAD IMAGE</button>
+                    <button class="btn-arcade pink" onclick="shareShareCard()">SHARE</button>
+                    <button class="btn-arcade yellow" onclick="app.goToHome()">RETURN TO MENU</button>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- Application scripts -->
+    <script src="js/utils/audio.js"></script>
+    <script src="js/pose-detector.js"></script>
+    <script src="js/motion-bus.js"></script>
+    <script src="js/rppg.js"></script>
+    <script src="js/effort.js"></script>
+    <script src="js/store.js"></script>
+    <script src="js/move-demo.js"></script>
+    <script src="js/game-audio.js"></script>
+    <script src="js/data-logger.js"></script>
+    <script src="js/app.js"></script>
+    <script type="module" src="js/cloud.js"></script>
+
+    
+    <!-- Custom Launcher Logic -->
+    <script>
+        // ==========================================
+        // MOTION SEAM: start the hub-side bus so pose streams into whatever game is loaded.
+        // ==========================================
+        if (typeof motionBus !== 'undefined') motionBus.start();
+        if (typeof rppgEstimator !== 'undefined') rppgEstimator.start();
+
+        // ---- Expected-move demo (left stick-figure box) ----
+        const MOVE_LABELS = {
+            jump: 'JUMP', squat: 'SQUAT / DUCK', pushup: 'PUSH ARMS FWD', armsOverhead: 'RAISE ARMS',
+            punchLeft: 'PUNCH LEFT', punchRight: 'PUNCH RIGHT', leanLeft: 'LEAN LEFT', leanRight: 'LEAN RIGHT', idle: 'GET READY'
+        };
+        // Each game's default move to show before the first live cue arrives.
+        const GAME_PRIMARY_MOVE = {
+            'phaser-rooftop-demo.html': 'jump',
+            'phaser-climber-demo.html': 'jump',
+            'phaser-rope-demo.html': 'jump',
+            'phaser-brawler-demo.html': 'punchLeft',
+            'phaser-train-demo.html': 'pushup',
+            'phaser-jetpack-demo.html': 'armsOverhead',
+            'three-hoverboard-demo-v2.html': 'leanLeft'
+        };
+        // Show the demanded move on the pose-coach, then relax back to idle so it
+        // only animates a move WHEN one is actually needed (not a perpetual loop).
+        let _moveDemoIdleTimer = null;
+        function showExpectedMove(move) {
+            if (typeof MoveDemo === 'undefined' || !move) return;
+            MoveDemo.show(move);
+            const dl = document.getElementById('move-demo-label');
+            if (dl) dl.innerText = MOVE_LABELS[move] || move;
+            if (_moveDemoIdleTimer) clearTimeout(_moveDemoIdleTimer);
+            if (move !== 'idle') {
+                _moveDemoIdleTimer = setTimeout(() => {
+                    MoveDemo.show('idle');
+                    const l = document.getElementById('move-demo-label');
+                    if (l) l.innerText = 'GET READY';
+                }, 1800); // ~1.5 loops, then rest
+            }
+        }
+
+        // Games broadcast the currently-expected move; drive the demo + its label.
+        window.addEventListener('message', (e) => {
+            const d = e.data;
+            if (!d || d.source !== 'fitarcade-game' || d.kind !== 'expectMove') return;
+            showExpectedMove(d.move);
+        });
+
+        // Heart-rate training zones → neon colours (shared by HUD chip + summary).
+        const ZONE_COLORS = {
+            'REST':     'var(--primary-cyan)',
+            'WARM':     'var(--success-green)',
+            'FAT BURN': 'var(--accent-yellow)',
+            'CARDIO':   'var(--primary-neon-pink)',
+            'PEAK':     '#ff3b3b'
+        };
+
+        // Per-game presentation: marquee title + the aspect ratio the stage adopts, so the
+        // game canvas fills its neon frame edge-to-edge (rooftop is 2:1, the rest are 4:3).
+        const GAME_META = {
+            'phaser-rooftop-demo.html':    { title: 'ROOFTOP RUNNER',    ar: 2,      moves: 'JUMP over AC units &amp; gaps &bull; SQUAT to slide under drones' },
+            'phaser-climber-demo.html':    { title: 'NEON WALL CLIMBER', ar: 1.3333, moves: 'JUMP to climb &bull; CROSS PUNCH LEFT / RIGHT to switch columns' },
+            'phaser-rope-demo.html':       { title: 'INDUSTRIAL ROPE',   ar: 1.3333, moves: 'HIGH KNEE or JUMP to climb &bull; LEAN LEFT / RIGHT to swing across' },
+            'phaser-brawler-demo.html':    { title: 'STREET BRAWLER',    ar: 1.3333, moves: 'UPPERCUT LEFT / RIGHT to hit thugs &bull; GUARD/SHIELD to block lasers' },
+            'phaser-train-demo.html':      { title: 'CYBER-TRAIN CRAWL', ar: 1.3333, moves: 'PUSH ARMS FORWARD to rise over wires &bull; WIDE SUMO STANCE to flatten under beams' },
+            'phaser-jetpack-demo.html':    { title: 'JETPACK FLAPPY',    ar: 1.3333, moves: 'RAISE ARMS or JUMP to fire the jetpack and rise' },
+            'three-hoverboard-demo-v2.html': { title: 'HOVERBOARD ALLEY',  ar: 1.3333, moves: 'LEAN LEFT / RIGHT to switch lanes and dodge' }
+        };
+
+        // ------------------------------------------
+        // Universal Motion HUD controller (fitness stats tracked by the hub, over any game)
+        // ------------------------------------------
+        const MotionHUD = {
+            _unsub: [],
+            _timer: null,
+            _elapsed: 0,
+            _reps: 0,
+            _score: 0,
+            _bpm: 0,
+            _zone: 'REST',
+            _effort: 0,
+
+            _fmt(sec) {
+                const m = Math.floor(sec / 60).toString().padStart(2, '0');
+                const s = (sec % 60).toString().padStart(2, '0');
+                return `${m}:${s}`;
+            },
+            _kcal() { return Math.round(this._reps * 0.4 + (this._elapsed / 60) * 6); },
+            _render() {
+                document.getElementById('hud-reps').innerText = this._reps;
+                document.getElementById('hud-score').innerText = Number(this._score).toLocaleString();
+                document.getElementById('hud-kcal').innerText = this._kcal();
+                document.getElementById('hud-time').innerText = this._fmt(this._elapsed);
+                const bpmEl = document.getElementById('hud-bpm');
+                const bpmStat = document.getElementById('hud-bpm-stat');
+                if (bpmEl) bpmEl.innerText = this._bpm > 0 ? this._bpm : '--';
+                if (bpmStat) {
+                    const color = ZONE_COLORS[this._zone] || 'var(--primary-cyan)';
+                    bpmStat.style.borderColor = color;
+                    bpmStat.style.boxShadow = '0 0 12px ' + color;
+                    bpmEl.style.color = color;
+                    bpmEl.style.textShadow = '0 0 8px ' + color;
+                }
+                const effEl = document.getElementById('hud-effort');
+                const effStat = document.getElementById('hud-effort-stat');
+                if (effEl && effStat) {
+                    effEl.innerText = Math.round(this._effort * 100) + '%';
+                    const ec = this._effort < 0.4 ? 'var(--primary-cyan)' : this._effort < 0.7 ? 'var(--accent-yellow)' : '#ff3b3b';
+                    effStat.style.borderColor = ec;
+                    effStat.style.boxShadow = '0 0 12px ' + ec;
+                    effEl.style.color = ec;
+                    effEl.style.textShadow = '0 0 8px ' + ec;
+                }
+            },
+            start() {
+                // Idempotent: tear down any prior timer + subscriptions so repeated
+                // launches (e.g. every circuit work step) don't stack them.
+                if (this._timer) clearInterval(this._timer);
+                this._unsub.forEach(fn => fn && fn());
+                this._unsub = [];
+
+                this._elapsed = 0; this._reps = 0; this._score = 0; this._effort = 0;
+                this._render();
+                document.getElementById('motion-hud').classList.add('active');
+
+                this._timer = setInterval(() => { this._elapsed++; this._render(); }, 1000);
+
+                if (typeof motionBus !== 'undefined') {
+                    this._unsub.push(motionBus.on('reps', (n) => {
+                        this._reps = n; this._render();
+                        const el = document.getElementById('hud-reps').parentElement;
+                        el.classList.remove('rep-pulse'); void el.offsetWidth; el.classList.add('rep-pulse');
+                    }));
+                    this._unsub.push(motionBus.on('game:score', (s) => { this._score = s; this._render(); }));
+                }
+                if (typeof rppgEstimator !== 'undefined') {
+                    this._unsub.push(rppgEstimator.onUpdate(({ bpm, zone, confidence }) => {
+                        if (confidence >= 0.3 || bpm > 0) { this._bpm = bpm; this._zone = zone; this._render(); }
+                    }));
+                }
+                if (typeof effortEstimator !== 'undefined') {
+                    this._unsub.push(effortEstimator.onUpdate((e) => { this._effort = e; this._render(); }));
+                }
+            },
+            stop() {
+                document.getElementById('motion-hud').classList.remove('active');
+                if (this._timer) clearInterval(this._timer);
+                this._timer = null;
+                this._unsub.forEach(fn => fn && fn());
+                this._unsub = [];
+            }
+        };
+
+        function launchMVP(filename) {
+            if (typeof app !== 'undefined') {
+                app.showScreen('game');
+            } else {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById('screen-game').classList.add('active');
+            }
+
+            // Load the standalone MVP into the iframe
+            const frame = document.getElementById('game-frame');
+            frame.src = filename;
+
+            // Adopt this game's aspect ratio + title so it fills the neon stage perfectly.
+            const meta = GAME_META[filename] || { title: 'FIT-ARCADE', ar: 1.3333 };
+            const stage = document.getElementById('game-stage');
+            if (stage) stage.style.setProperty('--ar-num', meta.ar);
+            const titleEl = document.getElementById('hud-title');
+            if (titleEl) titleEl.innerText = meta.title;
+
+            // Show this game's correct moves in the side rail.
+            const instr = document.getElementById('game-instructions-text');
+            if (instr) instr.innerHTML =
+                '<p style="color: var(--primary-neon-pink); margin-bottom: 0.6rem;">HOW TO PLAY</p>' +
+                '<p style="color: #fff; line-height: 1.6;">' + (meta.moves || 'Move in front of the camera to play.') + '</p>';
+
+            // Start the "do this move" stick-figure demo, seeded with the game's primary move.
+            const demoCv = document.getElementById('move-demo-canvas');
+            if (typeof MoveDemo !== 'undefined' && demoCv) {
+                MoveDemo.init(demoCv);
+                MoveDemo.start();
+                const pm = GAME_PRIMARY_MOVE[filename] || 'idle';
+                showExpectedMove(pm); // brief intro demo of the primary move, then idles
+            }
+
+            // Point the motion bus at this game and (re)start the fitness HUD.
+            if (typeof motionBus !== 'undefined') motionBus.attachFrame(frame);
+            if (typeof GameAudio !== 'undefined') GameAudio.start(filename); // per-game music + SFX
+            if (window.__researchOn && typeof DataLogger !== 'undefined') DataLogger.start({ game: filename }); // opt-in research logging
+            MotionHUD.start();
+            if (typeof DifficultyController !== 'undefined') DifficultyController.start();
+        }
+
+        function quitMVP() {
+            // Unload iframe
+            document.getElementById('game-frame').src = "";
+
+            // Tear down the motion seam + HUD.
+            if (typeof motionBus !== 'undefined') motionBus.detachFrame();
+            if (typeof GameAudio !== 'undefined') GameAudio.stop(); // stop per-game music
+            if (typeof DataLogger !== 'undefined') DataLogger.stop(); // end research session (no-op if off)
+            MotionHUD.stop();
+            if (typeof DifficultyController !== 'undefined') DifficultyController.stop();
+            if (typeof MoveDemo !== 'undefined') MoveDemo.stop();
+
+            if (typeof app !== 'undefined') {
+                app.showScreen('home');
+            } else {
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById('screen-home').classList.add('active');
+            }
+        }
+        
+        // ==========================================
+        // CIRCUIT MANAGER LOGIC
+        // ==========================================
+        const circuitGames = [
+            { file: 'phaser-jetpack-demo.html', title: 'JETPACK FLAPPY BIRD' },
+            { file: 'phaser-rope-demo.html', title: 'INDUSTRIAL ROPE SWINGER' },
+            { file: 'phaser-rooftop-demo.html', title: 'CYBERPUNK ROOFTOP RUNNER' },
+            { file: 'phaser-brawler-demo.html', title: 'STREET BRAWLER' },
+            { file: 'phaser-train-demo.html', title: 'CYBER-TRAIN CRAWL' },
+            { file: 'three-hoverboard-demo-v2.html', title: 'HOVERBOARD ALLEY' },
+            { file: 'phaser-climber-demo.html', title: 'NEON WALL CLIMBER' }
+        ];
+        
+        let circuitActive = false;
+        let currentCircuitIndex = 0;
+        let circuitInterval = null;
+        
+        // Configuration
+        const WORK_DURATION = 45; // seconds
+        const REST_DURATION = 15; // seconds
+        
+        function formatTime(seconds) {
+            let m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            let s = (seconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function startCircuit() {
+            circuitActive = true;
+            currentCircuitIndex = 0;
+            
+            // Show HUD
+            document.getElementById('circuit-hud').classList.add('active');
+            
+            // Start first game
+            startCircuitPhase('WORK');
+        }
+
+        function startCircuitPhase(phase) {
+            clearInterval(circuitInterval);
+            let timeLeft = 0;
+            
+            const hud = document.getElementById('circuit-hud');
+            const hudTimer = document.getElementById('circuit-timer');
+            const breather = document.getElementById('circuit-breather');
+            const breatherTimer = document.getElementById('breather-timer');
+            
+            if (phase === 'WORK') {
+                let game = circuitGames[currentCircuitIndex];
+                launchMVP(game.file); // Load into iframe
+                
+                hud.classList.add('active');
+                breather.classList.remove('active');
+                
+                timeLeft = WORK_DURATION;
+                hudTimer.innerText = formatTime(timeLeft);
+                
+                circuitInterval = setInterval(() => {
+                    timeLeft--;
+                    hudTimer.innerText = formatTime(timeLeft);
+                    if (timeLeft <= 0) {
+                        currentCircuitIndex++;
+                        if (currentCircuitIndex >= circuitGames.length) {
+                            endCircuit();
+                        } else {
+                            startCircuitPhase('REST');
+                        }
+                    }
+                }, 1000);
+            } 
+            else if (phase === 'REST') {
+                let nextGame = circuitGames[currentCircuitIndex];
+                
+                hud.classList.remove('active');
+                breather.classList.add('active');
+                
+                // Show next game info
+                document.getElementById('breather-next-game').innerText = nextGame.title;
+                
+                // Pre-load the next game quietly in the background iframe
+                document.getElementById('game-frame').src = nextGame.file;
+                
+                timeLeft = REST_DURATION;
+                breatherTimer.innerText = formatTime(timeLeft);
+                
+                circuitInterval = setInterval(() => {
+                    timeLeft--;
+                    breatherTimer.innerText = formatTime(timeLeft);
+                    if (timeLeft <= 0) {
+                        startCircuitPhase('WORK');
+                    }
+                }, 1000);
+            }
+        }
+
+        function endCircuit() {
+            clearInterval(circuitInterval);
+            circuitActive = false;
+            document.getElementById('circuit-hud').classList.remove('active');
+            document.getElementById('circuit-breather').classList.remove('active');
+            
+            // Show workout complete screen
+            quitMVP(); // unload iframe
+            
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen-summary').classList.add('active');
+        }
+
+        // Override quit MVP to stop circuit if user quits early
+        const originalQuitMVP = quitMVP;
+        window.quitMVP = function() {
+            if (circuitActive) {
+                clearInterval(circuitInterval);
+                circuitActive = false;
+                document.getElementById('circuit-hud').classList.remove('active');
+                document.getElementById('circuit-breather').classList.remove('active');
+            }
+            originalQuitMVP();
+        }
+    </script>
+
+    <!-- Structured workout program + shareable summary card -->
+    <script>
+        // ==========================================================
+        // STRUCTURED WORKOUT — each game's required motions map to a real exercise;
+        // the program sequences them warm-up -> HIIT -> cool-down for a balanced
+        // full-body intermediate session. Overrides the legacy startCircuit/endCircuit.
+        // ==========================================================
+        const WORKOUT_PROGRAM = {
+            name: 'FULL-BODY INTERMEDIATE',
+            phases: [
+                { name: 'WARM-UP', color: 'var(--success-green)', work: 30, rest: 12, target: 0.40, games: [
+                    { file: 'phaser-jetpack-demo.html',    exercise: 'ARM CIRCLES',  target: 'Shoulders / Mobility' },
+                    { file: 'three-hoverboard-demo-v2.html', exercise: 'TORSO TWISTS', target: 'Core / Mobility' },
+                    { file: 'phaser-rope-demo.html',    exercise: 'HIGH KNEES',    target: 'Cardio / Hip Warmup' }
+                ]},
+                { name: 'HIIT', color: 'var(--primary-neon-pink)', work: 40, rest: 20, target: 0.60, games: [
+                    { file: 'phaser-rooftop-demo.html', exercise: 'JUMPS & SQUATS',  target: 'Legs / Cardio' },
+                    { file: 'phaser-brawler-demo.html', exercise: 'COMBAT HIIT (UPPERCUTS)',   target: 'Arms / Shoulders' },
+                    { file: 'phaser-climber-demo.html', exercise: 'JACKS & CROSS PUNCHES', target: 'Full Body / Core' }
+                ]},
+                { name: 'COOL-DOWN', color: 'var(--primary-cyan)', work: 35, rest: 12, target: 0.35, games: [
+                    { file: 'phaser-train-demo.html',      exercise: 'PUSH-UPS & SUMO HOLD', target: 'Chest / Inner Thighs' },
+                    { file: 'three-hoverboard-demo-v2.html', exercise: 'SIDE CRUNCHES',    target: 'Obliques' }
+                ]}
+            ]
+        };
+
+        let workoutSteps = [];
+        let workoutStepIndex = 0;
+
+        // ---- Customizable total workout length ----
+        // The whole circuit (every game + its rest) is scaled to fit a user-chosen
+        // duration, so a full session can be captured within a screen-recorder limit.
+        // Each game's in-game WORK time scales proportionally; rests scale with it.
+        const DUR_MIN = 2, DUR_MAX = 30;      // allowed range (minutes)
+        const MIN_WORK = 8, MIN_REST = 4;     // floors so games never get too short (s)
+
+        function programBaseTotalSec() {
+            let t = 0;
+            WORKOUT_PROGRAM.phases.forEach(ph => ph.games.forEach(() => { t += ph.work + ph.rest; }));
+            return t; // total at scale 1.0
+        }
+
+        let circuitTargetMin = (() => {
+            const saved = parseFloat(localStorage.getItem('fitarcade.durationMin'));
+            if (saved >= DUR_MIN && saved <= DUR_MAX) return Math.round(saved);
+            return Math.max(DUR_MIN, Math.round(programBaseTotalSec() / 60)); // default = native length
+        })();
+
+        function circuitScale() {
+            const base = programBaseTotalSec();
+            return base > 0 ? (circuitTargetMin * 60) / base : 1;
+        }
+        // Per-step durations after scaling to the chosen total.
+        function scaledWork(phaseWork) { return Math.max(MIN_WORK, Math.round(phaseWork * circuitScale())); }
+        function scaledRest(phaseRest) { return Math.max(MIN_REST, Math.round(phaseRest * circuitScale())); }
+
+        function setCircuitDuration(min) {
+            circuitTargetMin = Math.max(DUR_MIN, Math.min(DUR_MAX, Math.round(min || circuitTargetMin)));
+            const inp = document.getElementById('input-duration');
+            if (inp) inp.value = circuitTargetMin;
+            try { localStorage.setItem('fitarcade.durationMin', String(circuitTargetMin)); } catch (e) {}
+            renderPlan();
+        }
+        function onDurationChange() {
+            const inp = document.getElementById('input-duration');
+            setCircuitDuration(inp ? parseFloat(inp.value) : circuitTargetMin);
+        }
+        function adjustDuration(delta) { setCircuitDuration(circuitTargetMin + delta); }
+
+        // ---- Movement style: rhythmic (beat-synced obstacles) vs random (game-driven) ----
+        window.RHYTHM_MODE = (localStorage.getItem('fitarcade.rhythmMode') === 'rhythmic') ? 'rhythmic' : 'random';
+        function setRhythmMode(mode) {
+            window.RHYTHM_MODE = (mode === 'rhythmic') ? 'rhythmic' : 'random';
+            try { localStorage.setItem('fitarcade.rhythmMode', window.RHYTHM_MODE); } catch (e) {}
+            if (typeof audio !== 'undefined') audio.playClick();
+            renderRhythmToggle();
+            // If a game is already running, apply the change immediately.
+            if (typeof GameAudio !== 'undefined' && GameAudio._active) GameAudio.broadcastRhythm();
+        }
+        function renderRhythmToggle() {
+            const seg = document.getElementById('mmc-seg');
+            if (!seg) return;
+            seg.querySelectorAll('.mmc-opt').forEach(b => {
+                b.classList.toggle('active', b.dataset.mode === window.RHYTHM_MODE);
+            });
+        }
+
+        function buildWorkoutSteps(program) {
+            const steps = [];
+            program.phases.forEach(phase => {
+                phase.games.forEach((g, gi) => {
+                    steps.push({
+                        phase: phase.name, phaseColor: phase.color,
+                        work: scaledWork(phase.work), rest: scaledRest(phase.rest),
+                        file: g.file, exercise: g.exercise, target: g.target,
+                        effortTarget: phase.target,
+                        phaseStart: gi === 0
+                    });
+                });
+            });
+            return steps;
+        }
+
+        // ---- Workout stat tracker (feeds the shareable summary) ----
+        const WorkoutSession = {
+            active: false, stats: null, _unsub: [],
+            start() {
+                this._unsub.forEach(f => f && f()); this._unsub = []; // guard re-entry
+                this.active = true;
+                this.stats = { reps: 0, score: 0, startT: Date.now(), elapsed: 0,
+                               hrSum: 0, hrCount: 0, hrPeak: 0, games: 0, program: WORKOUT_PROGRAM.name };
+                if (typeof motionBus !== 'undefined')
+                    this._unsub.push(motionBus.on('rep', () => { this.stats.reps++; }));
+                if (typeof rppgEstimator !== 'undefined')
+                    this._unsub.push(rppgEstimator.onUpdate(({ bpm, confidence }) => {
+                        if (bpm > 0 && confidence >= 0.3) {
+                            this.stats.hrSum += bpm; this.stats.hrCount++;
+                            this.stats.hrPeak = Math.max(this.stats.hrPeak, bpm);
+                        }
+                    }));
+            },
+            countGame() { if (this.stats) this.stats.games++; },
+            captureScore() { if (this.stats && typeof motionBus !== 'undefined') this.stats.score += (motionBus.gameScore || 0); },
+            end() {
+                this.active = false;
+                if (this.stats) this.stats.elapsed = Math.round((Date.now() - this.stats.startT) / 1000);
+                this._unsub.forEach(f => f && f()); this._unsub = [];
+                return this.stats;
+            }
+        };
+
+        // ---- Closed-loop adaptive difficulty ----
+        // Nudges game difficulty so measured effort tracks the phase's target band.
+        const DifficultyController = {
+            active: false, target: 0.55, difficulty: 1, basePace: 1, tick: null,
+            start(target) {
+                if (typeof target === 'number') this.target = target;
+                if (this.active) return;
+                this.active = true;
+                this.difficulty = 1;
+                // Apply the player's personal baseline pace immediately (before the first tick).
+                if (typeof motionBus !== 'undefined') motionBus.sendControl('difficulty', { value: +this.basePace.toFixed(2) });
+                if (typeof effortEstimator !== 'undefined') { effortEstimator.reset(); effortEstimator.start(); }
+                this.tick = setInterval(() => this._adjust(), 2000);
+            },
+            setTarget(t) { if (typeof t === 'number') this.target = t; },
+            _adjust() {
+                const e = (typeof effortEstimator !== 'undefined') ? effortEstimator.effort : 0;
+                const err = this.target - e; // below target -> ramp up, above -> ease off
+                // Keep the range gentle: a real jump/squat/push-up can't be spammed, so speed
+                // should only drift ~±20% around baseline, and adjust slowly.
+                this.difficulty = Math.max(0.85, Math.min(1.2, this.difficulty + err * 0.18));
+                // Final pace = personal baseline (age / fitness / resting-HR) × real-time effort drift.
+                if (typeof motionBus !== 'undefined') motionBus.sendControl('difficulty', { value: +(this.basePace * this.difficulty).toFixed(2) });
+            },
+            stop() {
+                this.active = false;
+                if (this.tick) clearInterval(this.tick);
+                this.tick = null;
+                if (typeof effortEstimator !== 'undefined') effortEstimator.stop();
+                if (typeof motionBus !== 'undefined') motionBus.sendControl('difficulty', { value: 1 });
+            }
+        };
+
+        // ---- Phased circuit runner ----
+        // The circuit always begins with calibration; confirming it starts startCircuit().
+        function startWorkoutFlow() {
+            if (typeof audio !== 'undefined') { audio.init(); audio.playClick(); }
+            if (typeof app !== 'undefined' && typeof app.goToCalibration === 'function') {
+                app.pendingCircuit = true;
+                app.goToCalibration();   // full-body calibration first
+            } else {
+                startCircuit();          // fallback if the app controller is unavailable
+            }
+        }
+
+        function startCircuit() {
+            circuitActive = true;
+            workoutSteps = buildWorkoutSteps(WORKOUT_PROGRAM);
+            workoutStepIndex = 0;
+            WorkoutSession.start();
+            runWorkStep();
+        }
+
+        function runWorkStep() {
+            clearInterval(circuitInterval);
+            const step = workoutSteps[workoutStepIndex];
+            launchMVP(step.file);
+            WorkoutSession.countGame();
+            if (typeof DifficultyController !== 'undefined') DifficultyController.setTarget(step.effortTarget);
+
+            const titleEl = document.getElementById('hud-title');
+            if (titleEl) titleEl.innerHTML = '<span style="color:' + step.phaseColor + '">' + step.phase + '</span> &middot; ' + step.exercise;
+
+            const hud = document.getElementById('circuit-hud');
+            const hudTimer = document.getElementById('circuit-timer');
+            const hudLabel = document.querySelector('#circuit-hud .circuit-hud-label');
+            document.getElementById('circuit-breather').classList.remove('active');
+            hud.classList.add('active');
+            if (hudLabel) hudLabel.innerText = step.phase + ' · WORK';
+
+            let timeLeft = step.work;
+            hudTimer.innerText = formatTime(timeLeft);
+            circuitInterval = setInterval(() => {
+                timeLeft--;
+                hudTimer.innerText = formatTime(timeLeft);
+                if (timeLeft <= 0) {
+                    WorkoutSession.captureScore();
+                    workoutStepIndex++;
+                    if (workoutStepIndex >= workoutSteps.length) endCircuit();
+                    else runRestStep();
+                }
+            }, 1000);
+        }
+
+        function runRestStep() {
+            clearInterval(circuitInterval);
+            const next = workoutSteps[workoutStepIndex];
+
+            if (typeof GameAudio !== 'undefined') GameAudio.stop(); // silence game music during the break
+            document.getElementById('circuit-hud').classList.remove('active');
+            document.getElementById('circuit-breather').classList.add('active');
+
+            const title = document.querySelector('#circuit-breather .breather-title');
+            if (title) {
+                if (next.phaseStart) { title.innerText = 'NEXT PHASE: ' + next.phase; title.style.color = next.phaseColor; }
+                else { title.innerText = 'REST & RECOVER'; title.style.color = ''; }
+            }
+            document.getElementById('breather-next-game').innerText = next.exercise + '  ·  ' + next.target;
+            document.getElementById('game-frame').src = next.file; // preload next game
+
+            let timeLeft = next.rest;
+            const bt = document.getElementById('breather-timer');
+            bt.innerText = formatTime(timeLeft);
+            circuitInterval = setInterval(() => {
+                timeLeft--;
+                bt.innerText = formatTime(timeLeft);
+                if (timeLeft <= 0) runWorkStep();
+            }, 1000);
+        }
+
+        function endCircuit() {
+            clearInterval(circuitInterval);
+            circuitActive = false;
+            document.getElementById('circuit-hud').classList.remove('active');
+            document.getElementById('circuit-breather').classList.remove('active');
+            if (typeof GameAudio !== 'undefined') GameAudio.stop(); // stop the last game's music
+            if (typeof DataLogger !== 'undefined') DataLogger.stop(); // end research session (no-op if off)
+
+            const stats = WorkoutSession.end();
+
+            // Tear down game + HUD without bouncing to home.
+            document.getElementById('game-frame').src = '';
+            if (typeof motionBus !== 'undefined') motionBus.detachFrame();
+            MotionHUD.stop();
+            if (typeof DifficultyController !== 'undefined') DifficultyController.stop();
+            if (typeof MoveDemo !== 'undefined') MoveDemo.stop();
+
+            const prog = recordWorkout(stats);   // persist history + progression
+            populateSummary(stats, prog);
+            renderProgress();                    // refresh the home dashboard
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById('screen-summary').classList.add('active');
+        }
+
+        // ==========================================================
+        // PROGRESSION — persist each workout, award XP, track streak + lifetime totals.
+        // ==========================================================
+        function recordWorkout(stats) {
+            if (typeof Store === 'undefined' || !stats) return null;
+            const avgHR = stats.hrCount ? Math.round(stats.hrSum / stats.hrCount) : 0;
+            const kcal = Math.round(stats.reps * 0.4 + (stats.elapsed / 60) * 6);
+            const xpEarned = Math.round(stats.reps * 2 + kcal * 3 + (stats.games || 0) * 15);
+
+            const prog = Store.getProgress();
+            const oldLevel = levelInfo(prog.xp).level;
+
+            const d = new Date();
+            const today = d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+            const yd = new Date(Date.now() - 86400000);
+            const yesterday = yd.getFullYear() + '-' + (yd.getMonth() + 1) + '-' + yd.getDate();
+            if (prog.lastWorkoutDate === today) { /* already counted today, keep streak */ }
+            else if (prog.lastWorkoutDate === yesterday) prog.streak = (prog.streak || 0) + 1;
+            else prog.streak = 1;
+            prog.lastWorkoutDate = today;
+
+            prog.xp += xpEarned;
+            prog.totalWorkouts = (prog.totalWorkouts || 0) + 1;
+            prog.totalReps = (prog.totalReps || 0) + stats.reps;
+            prog.totalCalories = (prog.totalCalories || 0) + kcal;
+            prog.level = levelInfo(prog.xp).level;
+            Store.saveProgress(prog);
+
+            Store.addWorkout({
+                date: today, program: stats.program, reps: stats.reps, kcal,
+                elapsed: stats.elapsed, avgHR, peakHR: stats.hrPeak || 0, games: stats.games || 0, xp: xpEarned
+            });
+
+            // Cloud mirror (opt-in; no-op when signed out): session workout + progress.
+            if (window.Cloud?.user) window.Cloud.recordSession(prog, {
+                program: stats.program, reps: stats.reps, score: stats.score || 0, elapsed: stats.elapsed,
+                kcal, avgHR, peakHR: stats.hrPeak || 0, games: stats.games || 0, xp: xpEarned
+            });
+
+            return { xpEarned, leveledUp: prog.level > oldLevel, oldLevel, newLevel: prog.level, progress: prog };
+        }
+
+        function renderProgress() {
+            if (typeof Store === 'undefined') return;
+            const prog = Store.getProgress();
+            const info = levelInfo(prog.xp);
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+            set('prog-level', info.level);
+            set('prog-workouts', prog.totalWorkouts || 0);
+            set('prog-reps', Number(prog.totalReps || 0).toLocaleString());
+            set('prog-cal', Number(prog.totalCalories || 0).toLocaleString());
+            set('prog-xp-text', info.into + ' / ' + info.need + ' XP');
+            const fill = document.getElementById('prog-xp-fill');
+            if (fill) fill.style.width = Math.round(info.pct * 100) + '%';
+            const streakEl = document.getElementById('prog-streak');
+            if (streakEl) streakEl.innerText = (prog.streak > 0) ? ('🔥 ' + prog.streak + ' DAY STREAK') : 'NO STREAK YET';
+
+            const histEl = document.getElementById('prog-history');
+            if (histEl) {
+                const hist = Store.getHistory().slice(0, 3);
+                histEl.innerHTML = hist.length
+                    ? hist.map(h => '<div class="prog-hist-row"><span>' + h.date + '</span><span>' + h.reps + ' reps &middot; ' + h.kcal + ' kcal &middot; +' + h.xp + ' XP</span></div>').join('')
+                    : '<div class="prog-hist-empty">Complete a workout to start your streak.</div>';
+            }
+        }
+
+        // ==========================================================
+        // SHAREABLE SUMMARY CARD (rendered to canvas → download / Web Share)
+        // ==========================================================
+        function populateSummary(stats, prog) {
+            if (!stats) stats = { reps: 0, score: 0, elapsed: 0, hrSum: 0, hrCount: 0, hrPeak: 0, games: 0, program: WORKOUT_PROGRAM.name };
+
+            const avgHR = stats.hrCount ? Math.round(stats.hrSum / stats.hrCount) : 0;
+            const kcal = Math.round(stats.reps * 0.4 + (stats.elapsed / 60) * 6);
+            const mins = Math.floor(stats.elapsed / 60), secs = stats.elapsed % 60;
+            const timeStr = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+            set('summary-score', Number(stats.score).toLocaleString());
+            set('summary-reps', stats.reps);
+            set('summary-time', timeStr);
+            set('summary-calories', kcal + ' kcal');
+            set('summary-avghr', avgHR ? avgHR + ' bpm' : '-- bpm');
+            set('summary-peakhr', stats.hrPeak ? stats.hrPeak + ' bpm' : '-- bpm');
+            set('summary-subtitle', stats.program);
+
+            const headline = document.getElementById('summary-headline');
+            if (headline) {
+                if (stats.reps > 120) { headline.innerText = 'WORKOUT HERO!'; headline.style.color = 'var(--success-green)'; }
+                else { headline.innerText = 'WORKOUT COMPLETE!'; headline.style.color = 'var(--accent-yellow)'; }
+            }
+
+            const xpEl = document.getElementById('summary-xp');
+            if (xpEl) {
+                xpEl.innerHTML = prog
+                    ? '+' + prog.xpEarned + ' XP' + (prog.leveledUp ? '  ·  <span style="color:var(--success-green)">LEVEL UP &rarr; ' + prog.newLevel + '!</span>' : '')
+                    : '';
+            }
+
+            renderShareCard(Object.assign({}, stats, { avgHR, kcal, timeStr }));
+        }
+
+        function renderShareCard(s) {
+            const canvas = document.getElementById('share-card');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width, H = canvas.height;
+            const cx = W / 2;
+            const pixel = (px) => px + 'px "Press Start 2P", monospace';
+
+            const bg = ctx.createLinearGradient(0, 0, 0, H);
+            bg.addColorStop(0, '#0b0718'); bg.addColorStop(1, '#050208');
+            ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+            ctx.strokeStyle = 'rgba(0,240,255,0.07)'; ctx.lineWidth = 1;
+            for (let x = 0; x < W; x += 36) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+            for (let y = 0; y < H; y += 36) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+            ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 4;
+            ctx.shadowColor = '#00f0ff'; ctx.shadowBlur = 18;
+            ctx.strokeRect(14, 14, W - 28, H - 28);
+            ctx.shadowBlur = 0;
+
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#ff007f'; ctx.shadowColor = '#ff007f'; ctx.shadowBlur = 14;
+            ctx.font = pixel(30); ctx.fillText('FIT-ARCADE', cx, 74);
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#8b85a3'; ctx.font = pixel(11);
+            ctx.fillText('MOTION WORKOUT COMPLETE', cx, 102);
+
+            ctx.fillStyle = '#ffea00'; ctx.shadowColor = '#ffea00'; ctx.shadowBlur = 10;
+            ctx.font = pixel(15); ctx.fillText(s.program, cx, 146);
+            ctx.shadowBlur = 0;
+
+            const stats = [
+                ['TIME', s.timeStr, '#00f0ff'],
+                ['REPS', String(s.reps), '#39ff14'],
+                ['CALORIES', s.kcal + ' kcal', '#ffea00'],
+                ['GAMES', String(s.games), '#00f0ff'],
+                ['AVG HEART', (s.avgHR || '--') + ' bpm', '#ff007f'],
+                ['PEAK HEART', (s.hrPeak || '--') + ' bpm', '#ff3b3b']
+            ];
+            const colX = [W * 0.28, W * 0.72];
+            const rowY = 220, rowH = 96;
+            stats.forEach((st, i) => {
+                const c = colX[i % 2];
+                const y = rowY + Math.floor(i / 2) * rowH;
+                ctx.fillStyle = '#8b85a3'; ctx.font = pixel(11); ctx.fillText(st[0], c, y);
+                ctx.fillStyle = st[2]; ctx.shadowColor = st[2]; ctx.shadowBlur = 8;
+                ctx.font = pixel(23); ctx.fillText(st[1], c, y + 36);
+                ctx.shadowBlur = 0;
+            });
+
+            const dateStr = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+            ctx.fillStyle = '#8b85a3'; ctx.font = pixel(10);
+            ctx.fillText(dateStr, cx, H - 58);
+            ctx.fillStyle = '#00f0ff'; ctx.font = pixel(11);
+            ctx.fillText('CAMERA-CONTROLLED · NO WEARABLES', cx, H - 34);
+        }
+
+        function downloadShareCard() {
+            const canvas = document.getElementById('share-card');
+            if (!canvas) return;
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'fit-arcade-workout.png';
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }, 'image/png');
+        }
+
+        function shareShareCard() {
+            const canvas = document.getElementById('share-card');
+            if (!canvas) return;
+            canvas.toBlob(async (blob) => {
+                const file = new File([blob], 'fit-arcade-workout.png', { type: 'image/png' });
+                const shareData = { files: [file], title: 'My FIT-ARCADE Workout',
+                    text: 'Just crushed a motion-controlled workout on FIT-ARCADE!' };
+                try {
+                    if (navigator.canShare && navigator.canShare(shareData)) { await navigator.share(shareData); return; }
+                } catch (e) { /* fall through */ }
+                downloadShareCard();
+            }, 'image/png');
+        }
+
+        // ---- Home "Today's Plan" card (built from WORKOUT_PROGRAM) ----
+        function renderPlan() {
+            const host = document.getElementById('plan-phases');
+            if (!host || typeof WORKOUT_PROGRAM === 'undefined') return;
+            let total = 0;
+            host.innerHTML = WORKOUT_PROGRAM.phases.map(phase => {
+                const w = scaledWork(phase.work), r = scaledRest(phase.rest);
+                phase.games.forEach(() => { total += w + r; });
+                const ex = phase.games.map(g =>
+                    '<div class="plan-ex"><span>' + g.exercise + '</span><small>' + g.target + '</small></div>'
+                ).join('');
+                return '<div class="plan-phase" style="--phase-color:' + phase.color + '">' +
+                    '<div class="plan-phase-name">' + phase.name + ' &middot; ' + w + 's work</div>' + ex + '</div>';
+            }).join('');
+            const durEl = document.getElementById('plan-duration');
+            if (durEl) durEl.innerText = '~' + Math.round(total / 60) + ' MIN';
+            const inp = document.getElementById('input-duration');
+            if (inp && document.activeElement !== inp) inp.value = circuitTargetMin;
+        }
+
+        // ==========================================================
+        // BIOMETRIC PROFILE — personalize HR zones (maxHR = 220 - age) + effort model.
+        // Persisted to localStorage; applied to the rPPG estimator.
+        // ==========================================================
+        (function initProfile() {
+            let prof = {};
+            try { prof = JSON.parse(localStorage.getItem('fitarcade.profile') || '{}'); } catch (e) {}
+            const ageEl = document.getElementById('input-age');
+            const restEl = document.getElementById('input-resthr');
+            const fitEl = document.getElementById('input-fitness');
+            const paceEl = document.getElementById('pace-readout');
+            if (prof.age && ageEl) ageEl.value = prof.age;
+            if (prof.restHR && restEl) restEl.value = prof.restHR;
+            if (prof.fitness && fitEl) fitEl.value = prof.fitness;
+
+            // Personal BASELINE pace from physical parameters. This is the reference speed
+            // the game runs at for THIS player; the real-time effort controller then drifts
+            // ±20% around it. Older / less-fit → gentler; younger / fitter → brisker.
+            const computeBasePace = (age, rest, fit) => {
+                const ageF = Math.max(0.7, Math.min(1.0, 1.0 - Math.max(0, age - 20) / 50 * 0.3));  // 20→1.0, 45→0.85, 70→0.70
+                const fitF = fit === 'beginner' ? 0.85 : fit === 'advanced' ? 1.15 : 1.0;
+                const rhrF = Math.max(0.94, Math.min(1.06, 1 + (60 - rest) / 400));                  // lower resting HR = fitter
+                return Math.max(0.55, Math.min(1.2, ageF * fitF * rhrF));
+            };
+
+            const apply = () => {
+                const age = ageEl ? parseInt(ageEl.value, 10) : 30;
+                const rest = restEl ? parseInt(restEl.value, 10) : 65;
+                const fit = fitEl ? fitEl.value : 'intermediate';
+                if (typeof rppgEstimator !== 'undefined') { rppgEstimator.setAge(age); rppgEstimator.setRestHR(rest); }
+                const basePace = computeBasePace(age, rest, fit);
+                if (typeof DifficultyController !== 'undefined') DifficultyController.basePace = basePace;
+                if (paceEl) paceEl.innerText = basePace.toFixed(2) + 'x';
+                try { localStorage.setItem('fitarcade.profile', JSON.stringify({ age, restHR: rest, fitness: fit })); } catch (e) {}
+                if (window.Cloud?.user) window.Cloud.saveProfile({ age, resting_hr: rest, fitness_level: fit, base_pace: basePace }); // cloud mirror (opt-in)
+            };
+            if (ageEl) ageEl.addEventListener('change', apply);
+            if (restEl) restEl.addEventListener('change', apply);
+            if (fitEl) fitEl.addEventListener('change', apply);
+            apply(); // apply saved/default values on load
+            renderProgress(); // paint the home progress panel from saved data
+            renderPlan();     // paint the today's-plan card
+            renderRhythmToggle(); // reflect saved movement style
+        })();
+
+        // ---- Research logging wiring (opt-in; drives js/data-logger.js) ----
+        (function initResearchLogging() {
+            const toggle = document.getElementById('toggle-research-logging');
+            const urlEl = document.getElementById('input-research-collector');
+            const dlBtn = document.getElementById('btn-research-download');
+            let saved = {};
+            try { saved = JSON.parse(localStorage.getItem('fitarcade.research') || '{}'); } catch (e) {}
+
+            window.__researchOn = !!saved.enabled;
+            if (toggle) toggle.checked = window.__researchOn;
+            if (urlEl && saved.url) urlEl.value = saved.url;
+            if (typeof DataLogger !== 'undefined' && saved.url) DataLogger.setCollector(saved.url);
+
+            const persist = () => {
+                try { localStorage.setItem('fitarcade.research', JSON.stringify({ enabled: window.__researchOn, url: (urlEl && urlEl.value) || '' })); } catch (e) {}
+            };
+            if (toggle) toggle.addEventListener('change', () => {
+                window.__researchOn = toggle.checked;
+                if (!window.__researchOn && typeof DataLogger !== 'undefined') DataLogger.stop(); // turning off ends any active recording
+                persist();
+            });
+            if (urlEl) urlEl.addEventListener('change', () => {
+                if (typeof DataLogger !== 'undefined') DataLogger.setCollector(urlEl.value);
+                persist();
+            });
+            if (dlBtn) dlBtn.addEventListener('click', () => {
+                if (typeof DataLogger !== 'undefined') DataLogger.download();
+            });
+        })();
+    </script>
+</body>
+</html>

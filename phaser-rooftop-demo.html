@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phaser City Rooftop Runner</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <!-- FIT-ARCADE motion seam: the hub owns the camera and streams pose in via postMessage.
+         MOTION_MAP declares how this game's motions map onto its existing keyboard controls. -->
+    <script>
+        window.MOTION_MAP = {
+            jump:  { type: 'tap',  code: 'Space',     keyCode: 32, key: ' ' },
+            squat: { type: 'hold', code: 'ArrowDown', keyCode: 40, key: 'ArrowDown', state: 'isSquatting' }
+        };
+    </script>
+    <script src="js/motion-bridge.js"></script>
+    <script src="js/coach.js"></script>
+    <style>
+        body { overflow: hidden; margin: 0; padding: 0; width: 100%; height: 100%; 
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            image-rendering: pixelated; 
+            box-shadow: 0 0 40px rgba(100, 150, 255, 0.3);
+            border: 4px solid #fff;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            text-align: center;
+            text-shadow: 2px 2px 0 #000;
+        }
+        h2 { color: #00ffcc; margin-bottom: 5px; }
+    </style>
+    <link rel="stylesheet" href="css/game-frame.css">
+</head>
+<body>
+    
+                    <span id="system-status-text" style="color: white; font-weight: bold;">INITIALIZING CAMERA...</span>
+                </div>
+                <canvas id="debugCanvas" width="320" height="240" style="margin-top: 10px; border: 2px solid #444; border-radius: 5px; width: 100%;"></canvas>
+                <br>
+                <button id="calibrateBtn" style="margin-top: 5px; padding: 5px 10px; background: #00ffcc; border: none; cursor: pointer; border-radius: 3px; font-weight: bold;">Calibrate Standing Height</button>
+            </div>
+            <button id="enableCameraBtn" style="padding: 10px 20px; background: #ff00cc; border: none; cursor: pointer; border-radius: 5px; font-weight: bold; color: white;">Enable Webcam Controls</button>
+        </div>
+    </div>
+    <script>
+        class PlayScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'PlayScene' });
+            }
+
+            preload() {
+                // Load our beautiful new AI generated background layers!
+                this.load.image('city_distant', 'city_distant.png');
+                this.load.image('city_mid', 'city_mid.png');
+                this.load.image('roof_raw', 'rooftop_tile.png');
+                
+                // Load AI generated obstacle sprites
+                this.load.image('ac_raw', 'ac_unit.png');
+                this.load.image('drone_raw', 'cyber_drone.png');
+
+                // 7. The Player
+                // We load the newly standardized master image!
+                // We load it just as a raw image first so we can dynamically calculate its frame sizes in create()
+                this.load.image('master_raw', 'master_sprite.png');
+            }
+
+            create() {
+                this.score = 0;
+                this.gameSpeed = 230; // Pixels per second (paced for real jumps/squats)
+                this.invulnerable = false;
+                
+                this.scoreText = this.add.text(20, 20, 'Score: 0', { fontSize: '24px', fill: '#fff' }).setDepth(50);
+                
+                // Survival points
+                this.time.addEvent({
+                    delay: 100,
+                    callback: () => {
+                        this.score += 1;
+                        this.scoreText.setText('Score: ' + this.score);
+                        if (window.MotionBridge) window.MotionBridge.reportScore(this.score);
+                    },
+                    loop: true
+                });
+
+                // --- 0. DYNAMICALLY CLEAN UP AI ASSETS ---
+                // Clean white backgrounds from AI obstacles and scale them down
+                let removeWhite = (key, newKey, targetWidth, targetHeight) => {
+                    let img = this.textures.get(key).getSourceImage();
+                    let canvas = this.textures.createCanvas(newKey, targetWidth, targetHeight);
+                    let ctx = canvas.getContext();
+                    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+                    let imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+                    let data = imgData.data;
+                    for (let i = 0; i < data.length; i += 4) {
+                        if (data[i] > 220 && data[i+1] > 220 && data[i+2] > 220) {
+                            data[i+3] = 0; // Make white transparent
+                        }
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                    canvas.refresh();
+                };
+
+                removeWhite('ac_raw', 'ac_unit', 50, 50);
+                removeWhite('drone_raw', 'drone', 70, 50);
+                removeWhite('roof_raw', 'roof_segment', 400, 64);
+
+                // Clean the sky from the midground city so we can see the distant city behind it!
+                let removeSky = (key, newKey) => {
+                    let img = this.textures.get(key).getSourceImage();
+                    let canvas = this.textures.createCanvas(newKey, img.width, img.height);
+                    let ctx = canvas.getContext();
+                    ctx.drawImage(img, 0, 0, img.width, img.height);
+                    let imgData = ctx.getImageData(0, 0, img.width, img.height);
+                    let data = imgData.data;
+                    
+                    // Sample the top-left pixel as the "sky color"
+                    let rSky = data[0], gSky = data[1], bSky = data[2];
+                    
+                    for (let i = 0; i < data.length; i += 4) {
+                        let r = data[i], g = data[i+1], b = data[i+2];
+                        let dist = Math.abs(r - rSky) + Math.abs(g - gSky) + Math.abs(b - bSky);
+                        
+                        // If it's close to the sky color, make it transparent
+                        if (dist < 80) {
+                            data[i+3] = 0; 
+                        } else if (dist < 120) {
+                            data[i+3] = 128; // Semi-transparent edge
+                        }
+                    }
+                    ctx.putImageData(imgData, 0, 0);
+                    canvas.refresh();
+                };
+                removeSky('city_mid', 'city_mid_clear');
+
+                // DYNAMICALLY CREATE PLAYER SPRITESHEET
+                let rawImg = this.textures.get('master_raw').getSourceImage();
+                let fWidth = rawImg.width / 12;
+                let fHeight = rawImg.height;
+                this.textures.addSpriteSheet('master_sprite', rawImg, { frameWidth: fWidth, frameHeight: fHeight });
+
+                // --- 1. SETUP BACKGROUND LAYERS ---
+                this.add.rectangle(400, 200, 800, 400, 0x050510); // Very dark blue base sky
+                
+                // Distant city is darkened to recede into the background
+                this.cityDistant = this.add.tileSprite(400, 400, 800, 600, 'city_distant').setOrigin(0.5, 1).setTint(0x444466);
+                
+                // Mid city uses the transparent version so we can see the distant city!
+                this.cityMid = this.add.tileSprite(400, 400, 800, 600, 'city_mid_clear').setOrigin(0.5, 1).setTint(0x8888aa);
+
+                // --- 1.5 SETUP CYBERPUNK VFX ---
+                let graphics = this.make.graphics({x: 0, y: 0, add: false});
+                graphics.fillStyle(0x00ffcc, 0.6);
+                graphics.fillRect(0, 0, 2, 10);
+                graphics.generateTexture('rain_drop', 2, 10);
+
+                this.add.particles('rain_drop').createEmitter({
+                    x: { min: 0, max: 800 },
+                    y: -10,
+                    lifespan: 1500,
+                    speedY: { min: 400, max: 600 },
+                    speedX: { min: -100, max: -50 }, // Blowing backwards due to running speed
+                    scale: { start: 1, end: 0.5 },
+                    quantity: 4,
+                    blendMode: 'SCREEN'
+                });
+
+                graphics.clear();
+                graphics.fillStyle(0xffaa00, 1);
+                graphics.fillRect(0, 0, 4, 4);
+                graphics.generateTexture('spark', 4, 4);
+                
+                this.sparkEmitter = this.add.particles('spark').createEmitter({
+                    x: 150,
+                    y: 368,
+                    speed: { min: 50, max: 200 },
+                    angle: { min: 250, max: 290 },
+                    gravityY: 400,
+                    lifespan: 400,
+                    scale: { start: 1, end: 0 },
+                    blendMode: 'ADD',
+                    on: false // Only trigger manually
+                });
+
+                // --- 2. SETUP THE GROUND PLATFORMS ---
+                this.platforms = this.physics.add.group();
+                this.lastSpawnedGap = false;
+                this.lastSpawnedObstacle = false;
+
+                // --- 3. SETUP PLAYER ---
+                this.player = this.physics.add.sprite(150, 200, 'master_sprite');
+                this.player.setGravityY(1500); 
+                this.physics.add.collider(this.player, this.platforms);
+
+                // Now we only need ONE scale for everything!
+                // We'll scale it so the character is roughly 100px tall
+                let scaleFactor = 100 / fHeight;
+                this.player.setScale(scaleFactor);
+                
+                // Tight, standardized physics hitbox (slightly thinner than visual width)
+                this.player.body.setSize(fWidth * 0.5, fHeight * 0.9);
+                this.player.body.setOffset(fWidth * 0.25, fHeight * 0.1);
+
+                // Create the running animation (frames 0 to 3)
+                this.anims.create({
+                    key: 'run',
+                    frames: this.anims.generateFrameNumbers('master_sprite', { start: 0, end: 3 }),
+                    frameRate: 10,
+                    repeat: -1
+                });
+                
+                // Create the jump animation (frames 4 to 7)
+                this.anims.create({
+                    key: 'jump',
+                    frames: this.anims.generateFrameNumbers('master_sprite', { start: 4, end: 7 }),
+                    frameRate: 8,
+                    repeat: 0 
+                });
+
+                // Create the slide animation (frames 8 to 11)
+                this.anims.create({
+                    key: 'slide',
+                    frames: this.anims.generateFrameNumbers('master_sprite', { start: 8, end: 11 }),
+                    frameRate: 10,
+                    repeat: 0 
+                });
+                
+                this.player.anims.play('run', true);
+
+                // --- 4. SETUP OBSTACLES ---
+                this.obstacles = this.physics.add.group();
+                this.physics.add.overlap(this.player, this.obstacles, this.hitObstacle, null, this);
+
+                this.highObstacles = this.physics.add.group();
+                this.physics.add.overlap(this.player, this.highObstacles, this.hitObstacle, null, this);
+
+                // --- 5. INITIAL LEVEL GENERATION ---
+                this.spawnPlatform(200, false);
+                this.spawnPlatform(600, false);
+                this.spawnPlatform(1000, false);
+
+                // --- 6. INPUT ---
+                this.spaceBar = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+                this.downKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
+
+                // --- 7. AI MOTION CONTROLS (Manual Enable) ---
+                document.getElementById('enableCameraBtn').addEventListener('click', () => {
+                    document.getElementById('enableCameraBtn').style.display = 'none';
+                    document.getElementById('cameraControls').style.display = 'block';
+                    
+                    poseDetector.addListener((results, posture) => {
+                        poseDetector.draw(document.getElementById('debugCanvas'));
+                        if (posture.isJumping && this.player.body.touching.down && !this.gameOver && !posture.isSquatting) {
+                            this.player.setVelocityY(-600);
+                            this.player.anims.play('jump', true);
+                        }
+                    });
+                });
+
+                document.getElementById('calibrateBtn').addEventListener('click', () => {
+                    const txt = document.getElementById('system-status-text');
+                    txt.innerText = "STAND STILL IN 3...";
+                    setTimeout(() => txt.innerText = "STAND STILL IN 2...", 1000);
+                    setTimeout(() => txt.innerText = "STAND STILL IN 1...", 2000);
+                    setTimeout(() => {
+                        if (poseDetector.calibrateStanding()) {
+                            poseDetector.baselines.calibrated = true;
+                            txt.innerText = "CALIBRATED!";
+                        } else {
+                            txt.innerText = "FAILED (Not fully visible)";
+                        }
+                        setTimeout(() => txt.innerText = "SYSTEM ACTIVE", 2000);
+                    }, 3000);
+                });
+            }
+
+            spawnPlatform(x, spawnObstacle) {
+                let plat = this.platforms.create(x, 368, 'roof_segment');
+                plat.setVelocityX(-this.gameSpeed);
+                plat.setImmovable(true);
+                plat.body.allowGravity = false;
+                
+                if (spawnObstacle) {
+                    if (Math.random() > 0.5) {
+                        let obstacle = this.obstacles.create(x, 312, 'ac_unit');
+                        obstacle.setVelocityX(-this.gameSpeed);
+                        obstacle.setImmovable(true);
+                        obstacle.body.allowGravity = false;
+                    } else {
+                        let drone = this.highObstacles.create(x, 260, 'drone');
+                        drone.setVelocityX(-this.gameSpeed - 80);
+                        drone.setImmovable(true);
+                        drone.body.allowGravity = false;
+                    }
+                }
+            }
+
+            hitObstacle(player, obstacle) {
+                if (this.invulnerable) return;
+                obstacle.destroy();
+                
+                this.score = Math.max(0, this.score - 50);
+                this.scoreText.setText('Score: ' + this.score);
+                
+                this.cameras.main.shake(200, 0.02);
+                this.cameras.main.flash(200, 255, 0, 0);
+                
+                this.invulnerable = true;
+                
+                this.tweens.add({
+                    targets: this.player,
+                    alpha: 0.2,
+                    yoyo: true,
+                    repeat: 7,
+                    duration: 100,
+                    onComplete: () => {
+                        this.player.alpha = 1;
+                        this.invulnerable = false;
+                    }
+                });
+            }
+
+            update(time, delta) {
+                // Fall Death Logic
+                if (this.player.y > 450) {
+                    this.score = Math.max(0, this.score - 50);
+                    this.scoreText.setText('Score: ' + this.score);
+                    this.cameras.main.flash(200, 255, 0, 0);
+                    
+                    // Teleport to the top of the nearest incoming platform
+                    let pArr = this.platforms.getChildren();
+                    let nextPlatform = pArr.find(platform => platform.x > 100);
+                    if (nextPlatform) {
+                        this.player.y = nextPlatform.y - 100;
+                        this.player.body.setVelocityY(0);
+                    } else {
+                        this.player.y = 100;
+                        this.player.body.setVelocityY(0);
+                    }
+                }
+
+                // Keep player from being dragged by moving platform friction
+                this.player.setX(150);
+
+                let isSquatting = this.downKey.isDown || (window.poseDetector && window.poseDetector.posture.isSquatting);
+                let justLanded = this.player.body.touching.down && !this.wasTouchingDown;
+                this.wasTouchingDown = this.player.body.touching.down;
+
+                if (justLanded) {
+                    this.sparkEmitter.explode(15, this.player.x, this.player.y + 40);
+                }
+
+                // Jumping Logic
+                if (Phaser.Input.Keyboard.JustDown(this.spaceBar) && this.player.body.touching.down && !isSquatting) {
+                    this.player.setVelocityY(-600);
+                    this.player.anims.play('jump', true);
+                }
+                // Sliding Logic
+                else if (isSquatting && this.player.body.touching.down) {
+                    if (this.player.anims.currentAnim && this.player.anims.currentAnim.key !== 'slide') {
+                        this.player.anims.play('slide', true);
+                        // Shrink hitbox so we can slide under things!
+                        let fWidth = this.textures.get('master_raw').getSourceImage().width / 12;
+                        let fHeight = this.textures.get('master_raw').getSourceImage().height;
+                        this.player.body.setSize(fWidth * 0.8, fHeight * 0.4);
+                        this.player.body.setOffset(fWidth * 0.1, fHeight * 0.6); // Lowered
+                    }
+                    // Emitting continuous sparks while sliding!
+                    this.sparkEmitter.emitParticleAt(this.player.x + 20, this.player.y + 45, 1);
+                }
+                // Resume running animation when touching the ground again, and not squatting
+                else if (!isSquatting && this.player.body.touching.down && this.player.body.velocity.y >= 0 && this.player.anims.currentAnim && this.player.anims.currentAnim.key !== 'run') {
+                    this.player.anims.play('run', true);
+                    // Revert hitbox
+                    let fWidth = this.textures.get('master_raw').getSourceImage().width / 12;
+                    let fHeight = this.textures.get('master_raw').getSourceImage().height;
+                    this.player.body.setSize(fWidth * 0.5, fHeight * 0.9);
+                    this.player.body.setOffset(fWidth * 0.25, fHeight * 0.1);
+                }
+
+                // Gradually increase speed (slow ramp + cap so it never outruns a human)
+                this.gameSpeed = Math.min(320, this.gameSpeed + delta * 0.0015);
+                // Hub-driven adaptive difficulty scales the world speed in real time.
+                const D = window.MOTION_DIFFICULTY || 1;
+
+                // --- THE MAGIC: PARALLAX SCROLLING ---
+                // The mid city moves a bit slower
+                this.cityMid.tilePositionX += (this.gameSpeed * delta * 0.0005);
+                
+                // The distant city moves very slowly, creating a huge sense of depth
+                this.cityDistant.tilePositionX += (this.gameSpeed * delta * 0.0001);
+
+                // Manage Platforms & Scrolling
+                let maxX = 0;
+                this.platforms.getChildren().forEach(plat => {
+                    plat.setVelocityX(-this.gameSpeed * D);
+                    if (plat.x > maxX) maxX = plat.x;
+                    if (plat.x < -200) plat.destroy();
+                });
+                
+                // If the rightmost platform is fully visible, spawn a new one with a possible gap
+                if (maxX < 800) {
+                    // Safe Spawning Logic: We NEVER spawn an obstacle right after a gap, 
+                    // and we NEVER spawn two obstacles/gaps in a row.
+                    
+                    if (!this.lastSpawnedGap && !this.lastSpawnedObstacle && Math.random() < 0.4) {
+                        // Spawn a gap!
+                        let gap = 120 + Math.random() * 80;
+                        this.lastSpawnedGap = true;
+                        this.lastSpawnedObstacle = false;
+                        this.spawnPlatform(maxX + 400 + gap, false);
+                    } else {
+                        // No gap. Decide if we want an obstacle.
+                        this.lastSpawnedGap = false;
+                        let spawnObstacle = (!this.lastSpawnedObstacle && Math.random() > 0.4);
+                        this.lastSpawnedObstacle = spawnObstacle;
+                        this.spawnPlatform(maxX + 400, spawnObstacle);
+                    }
+                }
+
+                // Cleanup old obstacles and update speed
+                this.obstacles.getChildren().forEach(obstacle => {
+                    obstacle.setVelocityX(-this.gameSpeed * D);
+                    if (!obstacle.coached && obstacle.x < 440 && obstacle.x > 250) { obstacle.coached = true; if (window.Coach) window.Coach.cue('JUMP!', 'Jump'); }
+                    if (obstacle.x < -50) obstacle.destroy();
+                });
+                this.highObstacles.getChildren().forEach(drone => {
+                    drone.setVelocityX((-this.gameSpeed - 80) * D);
+                    if (!drone.coached && drone.x < 470 && drone.x > 260) { drone.coached = true; if (window.Coach) window.Coach.cue('DUCK!', 'Duck'); }
+                    if (drone.x < -50) drone.destroy();
+                });
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 400,
+            pixelArt: true,
+            physics: {
+                default: 'arcade',
+                arcade: { gravity: { y: 0 } }
+            },
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            scene: [PlayScene]
+        };
+
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>

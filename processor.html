@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Sprite Combiner Tool</title>
+</head>
+<body style="background: #1e1e24; color: white; font-family: sans-serif; text-align: center; padding-top: 50px;">
+    <h2>AI Sprite Combiner & Cleaner</h2>
+    <p>This tool will automatically stitch together the top two frames of your first sprite sheet and the bottom two frames of your second sprite sheet!</p>
+    
+    <button id="processBtn" disabled style="padding: 15px 30px; font-size: 18px; cursor: pointer; background-color: #00ffcc; border: none; border-radius: 5px; font-weight: bold;">
+        Loading images...
+    </button>
+    
+    <br><br>
+    <h4>Preview of the Combined Sprite Sheet:</h4>
+    <!-- Set preview size smaller via CSS so it fits on screen -->
+    <canvas id="canvas" style="border: 2px dashed #444; width: 512px; height: 512px; background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAACVJREFUKFNjZCASMDKgAhgZ/v//z4QlzcDAwMCILs+ER4FQCggBAKk4BQAQnL9AAAAAAElFTkSuQmCC');"></canvas>
+    
+    <script>
+        const img1 = new Image();
+        const img2 = new Image();
+        let loadedCount = 0;
+
+        function checkLoad() {
+            loadedCount++;
+            if (loadedCount === 2) {
+                const btn = document.getElementById('processBtn');
+                btn.disabled = false;
+                btn.innerText = "Combine, Clean & Download";
+            }
+        }
+
+        img1.onload = checkLoad;
+        img2.onload = checkLoad;
+
+        // Load the two images we just copied to your folder
+        img1.src = 'sprite1.png';
+        img2.src = 'sprite2.png';
+
+        document.getElementById('processBtn').addEventListener('click', () => {
+            const canvas = document.getElementById('canvas');
+            canvas.width = 1024;
+            canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            
+            // 1. Draw the TOP ROW (Frames 0 and 1) from the first sprite sheet
+            // ctx.drawImage(image, sourceX, sourceY, sourceW, sourceH, destX, destY, destW, destH)
+            ctx.drawImage(img1, 0, 0, 1024, 512, 0, 0, 1024, 512);
+            
+            // 2. Draw the BOTTOM ROW (Frames 2 and 3) from the second sprite sheet
+            ctx.drawImage(img2, 0, 512, 1024, 512, 0, 512, 1024, 512);
+            
+            // 3. Clean the white background
+            const imgData = ctx.getImageData(0, 0, 1024, 1024);
+            const data = imgData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                let r = data[i];
+                let g = data[i+1];
+                let b = data[i+2];
+                if (r > 230 && g > 230 && b > 230) {
+                    data[i+3] = 0; // Make transparent
+                }
+            }
+            ctx.putImageData(imgData, 0, 0);
+
+            // 4. Download as my_character.png
+            const link = document.createElement('a');
+            link.download = 'my_character.png'; 
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            
+            document.getElementById('processBtn').innerText = "Combined & Downloaded!";
+            document.getElementById('processBtn').style.backgroundColor = "#ff3366";
+            document.getElementById('processBtn').style.color = "white";
+        });
+    </script>
+</body>
+</html>

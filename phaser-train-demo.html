@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cyber-Train Crawl MVP</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { overflow: hidden; margin: 0; padding: 0; width: 100%; height: 100%;  margin: 0; background-color: #111; color: white; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; }
+        canvas { width: 100%; height: 100%; }
+        #info { text-align: center; margin-top: 10px; }
+        h2 { color: #ff3333; margin-bottom: 5px; }
+    </style>
+    <link rel="stylesheet" href="css/game-frame.css">
+    <script>
+        window.MOTION_MAP = {
+            pushup:     { type: 'hold', code: 'Space',     keyCode: 32, key: ' ',         state: 'isPushingFront' },
+            wideStance: { type: 'hold', code: 'ArrowDown', keyCode: 40, key: 'ArrowDown', state: 'isWideStance' }
+        };
+    </script>
+    <script src="js/motion-bridge.js"></script>
+    <script src="js/coach.js"></script>
+</head>
+<body>
+
+    <script>
+        class PlayScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'PlayScene' });
+            }
+
+            preload() {
+                this.load.spritesheet('hero_crawl', 'train_crawl_sheet.png', { frameWidth: 128, frameHeight: 128 });
+                this.load.spritesheet('hero_jump', 'train_jump_sheet.png', { frameWidth: 128, frameHeight: 128 });
+                this.load.spritesheet('hero_flat', 'train_flat_sheet.png', { frameWidth: 128, frameHeight: 128 });
+                this.load.image('train_beam', 'train_beam.png');
+                this.load.image('train_wire', 'train_wire.png');
+                this.load.image('train_orb', 'train_orb.png');
+                this.load.image('tunnel_wall', 'train_bg_tunnel.png');
+                this.load.image('train_roof', 'train_roof.png');
+            }
+
+            create() {
+                this.gameOver = false;
+                this.score = 0;
+                this.invulnerable = false;
+
+                // Parallax Speeds (Pixels per second)
+                // World moves Left->Right relative to Player
+                this.tunnelSpeed = 430; // paced so a real push-up / squat has time to happen
+                this.roofSpeed = 150;   // Train roof slides by slowly (crawl speed)
+
+                // --- ENVIRONMENT ---
+
+                // Tunnel Ceiling                // Parallax Backgrounds
+                this.tunnelBg = this.add.tileSprite(400, 225, 800, 450, 'tunnel_wall');
+                this.tunnelBg.setTint(0x555555); // Darken the background to make foreground pop
+                this.roofBg = this.add.tileSprite(400, 450, 800, 370, 'train_roof');
+                this.roofBg.setOrigin(0.5, 0); // Align the top of the image to y=450
+                this.roofBg.setTint(0xaaaaaa); // Make it slightly darker but keep colors
+
+                // Add a solid black backdrop behind everything just in case
+                this.cameras.main.setBackgroundColor('#111111');
+
+                // Keep some scrolling lines for extra speed illusion
+                this.roofLines = [];
+                this.ceilLines = [];
+                for (let i = 0; i < 5; i++) {
+                    let rLine = this.add.rectangle(i * 200, 470, 100, 5, 0x000000);
+                    rLine.setAlpha(0.5);
+                    let cLine = this.add.rectangle(i * 200 + 100, 130, 100, 5, 0x000000);
+                    cLine.setAlpha(0.5);
+                    this.roofLines.push(rLine);
+                    this.ceilLines.push(cLine);
+                }
+
+                // --- UI ---
+                this.scoreText = this.add.text(20, 160, 'Score: 0', { fontSize: '24px', fill: '#fff' }).setDepth(20);
+
+                this.stateText = this.add.text(400, 580, 'STATE: NEUTRAL', { fontSize: '24px', fill: '#aaaaaa' }).setOrigin(0.5).setDepth(20);
+
+                // --- PLAYER ---
+                this.playerState = 'neutral';
+
+                // Animations
+                this.anims.create({ key: 'anim_crawl', frames: this.anims.generateFrameNumbers('hero_crawl', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
+                this.anims.create({ key: 'anim_jump', frames: this.anims.generateFrameNumbers('hero_jump', { start: 0, end: 3 }), frameRate: 10, repeat: -1 });
+                this.anims.create({ key: 'anim_flat', frames: this.anims.generateFrameNumbers('hero_flat', { start: 0, end: 3 }), frameRate: 10, repeat: 0 });
+                this.anims.create({ key: 'anim_unflat', frames: this.anims.generateFrameNumbers('hero_flat', { start: 3, end: 0 }), frameRate: 10, repeat: 0 });
+
+                this.player = this.add.sprite(600, 450, 'hero_crawl');
+                this.player.setOrigin(0.5, 1);
+                this.player.setScale(1.2);
+                this.player.setDepth(10);
+                this.player.setFlipX(true);
+                this.player.anims.play('anim_crawl', true);
+
+                this.lastPlayerState = 'neutral';
+                this.isUnflattening = false;
+
+                // --- ITEMS & PATTERNS ---
+                this.obstacles = this.add.group();
+
+                // 0 = Low Wire, 1 = High Beam, 2 = OrbHigh, 3 = OrbMid, 4 = OrbLow
+                this.patterns = [
+                    // Pattern A: The Full Rep (Up -> Down -> Rest)
+                    [0, 1, 3],
+                    // Pattern B: The Endurance Hold (Down -> Hold Down -> Down)
+                    [1, 4, 1],
+                    // Pattern C: The High Plank (Up -> Hold Up)
+                    [0, 2]
+                ];
+
+                this.currentPattern = null;
+                this.currentWaveIndex = 0;
+
+                this.spawnTimer = this.time.addEvent({
+                    delay: 2000, // Spawn every 2s so a real push-up/squat + recovery fits
+                    callback: this.processWave,
+                    callbackScope: this,
+                    loop: true
+                });
+
+                // Survival points
+                this.time.addEvent({
+                    delay: 100,
+                    callback: () => {
+                        if (!this.gameOver) {
+                            this.score += 1;
+                            this.scoreText.setText('Score: ' + this.score);
+                        }
+                    },
+                    loop: true
+                });
+
+                // --- INPUT ---
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.spaceBar = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+                // Report score to the FIT-ARCADE hub HUD.
+                this.time.addEvent({ delay: 250, loop: true, callback: () => { if (window.MotionBridge) window.MotionBridge.reportScore(this.score || 0); } });
+            }
+
+            processWave() {
+                if (this.gameOver) return;
+
+                if (!this.currentPattern) {
+                    this.currentPattern = Phaser.Utils.Array.GetRandom(this.patterns);
+                    this.currentWaveIndex = 0;
+                    return; // Pause for a beat before starting a new pattern
+                }
+
+                let waveItem = this.currentPattern[this.currentWaveIndex];
+                this.spawnSpecificItem(waveItem);
+
+                this.currentWaveIndex++;
+
+                if (this.currentWaveIndex >= this.currentPattern.length) {
+                    this.currentPattern = null;
+                }
+            }
+
+            spawnSpecificItem(typeIndex) {
+                let obs;
+                let isOrb = false;
+
+                if (typeIndex === 1) { // High Beam
+                    let height = (425 - 150) * 0.9;
+                    let yPos = 150 + (height / 2);
+                    obs = this.add.sprite(-50, yPos, 'train_beam');
+                    obs.setDisplaySize(60, height);
+                    obs.obsType = 'high';
+                } else if (typeIndex === 0) { // Low Wire
+                    let height = 50;
+                    let yPos = 450 - (height / 2);
+                    obs = this.add.sprite(-50, yPos, 'train_wire');
+                    obs.setDisplaySize(80, height);
+                    obs.obsType = 'low';
+                } else {
+                    isOrb = true;
+                    let yPos;
+                    if (typeIndex === 2) yPos = 375; // orbHigh (Pushed-Up)
+                    else if (typeIndex === 3) yPos = 430; // orbMid (Neutral) -- slightly adjusted to 430 to match player neutral y
+                    else if (typeIndex === 4) yPos = 445; // orbLow (Flat) -- matched to flat player
+
+                    obs = this.add.sprite(-50, yPos, 'train_orb');
+                    obs.setDisplaySize(30, 30);
+
+                    if (typeIndex === 2) obs.obsType = 'orbHigh';
+                    else if (typeIndex === 3) obs.obsType = 'orbMid';
+                    else if (typeIndex === 4) obs.obsType = 'orbLow';
+                }
+
+                obs.setDepth(15);
+                obs.isActiveObstacle = true;
+                obs.isOrb = isOrb;
+
+                this.physics.add.existing(obs);
+                obs.body.setVelocityX(this.tunnelSpeed * (window.MOTION_DIFFICULTY || 1)); // Fast! (hub-driven difficulty)
+
+                this.obstacles.add(obs);
+            }
+
+            collectOrb(x, y) {
+                this.score += 50;
+                this.scoreText.setText('Score: ' + this.score);
+
+                let pop = this.add.circle(x, y, 20, 0xffffff);
+                pop.setDepth(20);
+                this.tweens.add({
+                    targets: pop,
+                    scale: 2.0,
+                    alpha: 0,
+                    duration: 200,
+                    onComplete: () => { pop.destroy(); }
+                });
+            }
+
+            takeDamage() {
+                if (this.invulnerable) return;
+
+                this.score = Math.max(0, this.score - 50);
+                this.scoreText.setText('Score: ' + this.score);
+
+                this.cameras.main.shake(200, 0.02);
+                this.cameras.main.flash(200, 255, 0, 0);
+
+                this.invulnerable = true;
+
+                this.tweens.add({
+                    targets: this.player,
+                    alpha: 0.2,
+                    yoyo: true,
+                    repeat: 7,
+                    duration: 100,
+                    onComplete: () => {
+                        this.player.alpha = 1;
+                        this.invulnerable = false;
+                    }
+                });
+            }
+
+            update(time, delta) {
+                if (this.gameOver) {
+                    if (Phaser.Input.Keyboard.JustDown(this.spaceBar)) this.scene.restart();
+                    return;
+                }
+
+                // Rhythmic mode: lock spawn cadence to the game's music beat.
+                if (this.spawnTimer && window.MOTION_RHYTHM && window.MOTION_RHYTHM.mode === 'rhythmic' && window.MOTION_RHYTHM.beatMs) {
+                    this.spawnTimer.delay = window.MOTION_RHYTHM.beatMs;
+                }
+
+                const D = window.MOTION_DIFFICULTY || 1; // hub-driven adaptive difficulty
+
+                // Parallax background scrolling (Left to Right relative to player facing left)
+                this.tunnelBg.tilePositionX -= this.tunnelSpeed * D * (delta / 1000);
+                this.roofBg.tilePositionX -= this.roofSpeed * (delta / 1000);
+
+                for (let rLine of this.roofLines) {
+                    rLine.x -= this.roofSpeed * (delta / 1000);
+                    if (rLine.x < -100) rLine.x = 900;
+                }
+                for (let cLine of this.ceilLines) {
+                    cLine.x -= this.tunnelSpeed * D * (delta / 1000);
+                    if (cLine.x < -100) cLine.x = 900;
+                }
+
+                // 3-State Input Logic
+                if (this.cursors.down.isDown) {
+                    this.playerState = 'flat';
+                    if (this.isJumping) {
+                        this.tweens.killTweensOf(this.player);
+                        this.isJumping = false;
+                    }
+                } else if (!this.isJumping && (Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.spaceBar))) {
+                    this.playerState = 'up';
+                    this.isJumping = true;
+                    this.tweens.add({
+                        targets: this.player,
+                        y: 300,
+                        duration: 350,
+                        yoyo: true,
+                        ease: 'Sine.easeInOut',
+                        onComplete: () => {
+                            this.isJumping = false;
+                        }
+                    });
+                } else if (!this.isJumping) {
+                    this.playerState = 'neutral';
+                }
+
+                // Update Player Visuals and Hitbox logic based on state
+                if (this.playerState === 'flat') {
+                    // Flat / Ducking (Slide/Sleep)
+                    this.player.setScale(1.2, 1.2);
+                    this.player.y = 480; // Offset by 30 to account for padding at bottom of flat sprite
+                    if (this.player.anims.currentAnim && this.player.anims.currentAnim.key !== 'anim_flat') {
+                        this.player.anims.play('anim_flat', true);
+                    }
+                    this.isUnflattening = false; // Interrupt unflattening if we go back flat
+                    this.stateText.setText('STATE: FLATTENED (Safe from High Beams)');
+                    this.stateText.setFill('#00ff00');
+                } else if (this.playerState === 'up') {
+                    // Jump (Diving)
+                    this.player.setScale(1.2, 1.2);
+                    // Tween controls y coordinate now
+                    this.player.anims.play('anim_jump', true);
+                    this.isUnflattening = false;
+                    this.stateText.setText('STATE: PUSHED-UP (Safe from Low Wires)');
+                    this.stateText.setFill('#00ff00');
+                } else {
+                    // Neutral Crawling
+                    this.player.setScale(1.2, 1.2);
+                    this.player.y = 450;
+
+                    if (this.lastPlayerState === 'flat') {
+                        this.isUnflattening = true;
+                        this.player.anims.play('anim_unflat', true);
+                    }
+
+                    if (this.isUnflattening) {
+                        if (this.player.anims.currentAnim && this.player.anims.currentAnim.key === 'anim_unflat' && this.player.anims.getProgress() === 1) {
+                            this.isUnflattening = false;
+                            this.player.anims.play('anim_crawl', true);
+                        } else {
+                            if (this.player.anims.currentAnim && this.player.anims.currentAnim.key !== 'anim_unflat') {
+                                this.player.anims.play('anim_unflat', true);
+                            }
+                        }
+                    } else {
+                        this.player.anims.play('anim_crawl', true);
+                    }
+
+                    this.stateText.setText('STATE: NEUTRAL (VULNERABLE!)');
+                    this.stateText.setFill('#ff0000');
+                }
+
+                this.lastPlayerState = this.playerState;
+
+                // Collision Detection
+                this.obstacles.getChildren().forEach(obs => {
+                    // Clean up (off right side of screen)
+                    if (obs.x > 900) {
+                        obs.destroy();
+                    }
+
+                    // Coach cue as a hazard approaches (before the player's X plane).
+                    if (!obs.coached && obs.isActiveObstacle && obs.x > 360 && obs.x < 500) {
+                        obs.coached = true;
+                        if (window.Coach) {
+                            if (obs.obsType === 'high') window.Coach.cue('DUCK!', 'Flatten');
+                            else if (obs.obsType === 'low') window.Coach.cue('PUSH UP!', 'Push up');
+                        }
+                    }
+
+                    // Check if passing player's X plane (player X is 600)
+                    if (obs.isActiveObstacle && obs.x > 550 && obs.x < 650) {
+                        obs.isActiveObstacle = false; // Prevent multi-hit
+
+                        let hit = false;
+                        let collect = false;
+
+                        if (obs.obsType === 'high' && this.playerState !== 'flat') {
+                            hit = true;
+                        } else if (obs.obsType === 'low' && this.playerState !== 'up') {
+                            hit = true;
+                        } else if (obs.obsType === 'orbHigh' && this.playerState === 'up') {
+                            collect = true;
+                        } else if (obs.obsType === 'orbMid' && this.playerState === 'neutral') {
+                            collect = true;
+                        } else if (obs.obsType === 'orbLow' && this.playerState === 'flat') {
+                            collect = true;
+                        }
+
+                        if (hit) {
+                            obs.setTint(0xff0000);
+                            this.takeDamage();
+                        } else if (collect) {
+                            obs.setVisible(false);
+                            this.collectOrb(obs.x, obs.y);
+                        } else if (!obs.isOrb) {
+                            obs.setTint(0x00ff00); // Safe dodge indicator
+                        } else {
+                            obs.setAlpha(0.2); // Missed orb indicator
+                        }
+                    }
+                });
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: document.body,
+            physics: {
+                default: 'arcade',
+                arcade: { gravity: { y: 0 }, debug: false }
+            },
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            scene: [PlayScene]
+        };
+
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>

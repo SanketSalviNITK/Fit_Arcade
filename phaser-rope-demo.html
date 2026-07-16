@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cyberpunk Rope Climber MVP</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body { overflow: hidden; margin: 0; padding: 0; width: 100%; height: 100%;  margin: 0; background-color: #111; color: white; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; }
+        canvas { image-rendering: pixelated; box-shadow: 0 0 40px rgba(0, 255, 200, 0.3); border: 4px solid #fff; margin-top: 20px; }
+        #info { text-align: center; margin-top: 10px; }
+        h2 { color: #00ffcc; margin-bottom: 5px; }
+    </style>
+    <link rel="stylesheet" href="css/game-frame.css">
+    <script>
+        window.MOTION_MAP = {
+            jump:          { type: 'tap', code: 'Space',      keyCode: 32, key: ' ' },
+            highKneeLeft:  { type: 'tap', code: 'Space',      keyCode: 32, key: ' ' },
+            highKneeRight: { type: 'tap', code: 'Space',      keyCode: 32, key: ' ' },
+            leanLeft:      { type: 'tap', code: 'ArrowLeft',  keyCode: 37, key: 'ArrowLeft' },
+            leanRight:     { type: 'tap', code: 'ArrowRight', keyCode: 39, key: 'ArrowRight' }
+        };
+    </script>
+    <script src="js/motion-bridge.js"></script>
+    <script src="js/coach.js"></script>
+</head>
+<body>
+    
+    <script>
+        class PlayScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'PlayScene' });
+            }
+
+            preload() {
+                // Loading the gorgeous new AI-generated back-facing rope climber sprite!
+                this.load.spritesheet('player_sprite', 'rope_climber_1x4.png', { frameWidth: 128, frameHeight: 128 });
+                
+                this.load.image('chasm_bg', 'chasm_bg.png');
+                this.load.image('rope_tex', 'rope_texture.png');
+                this.load.image('smog_tex', 'smog.png');
+                this.load.image('drone_tex', 'hover_drone.png');
+            }
+
+            create() {
+                this.score = 0;
+                this.climbSpeed = 120; // px/sec — paced for real climbing
+
+                // --- ENVIRONMENT ---
+                // Parallax Chasm Background
+                this.bg = this.add.tileSprite(400, 300, 800, 600, 'chasm_bg');
+                
+                // Create soft-edged smog texture
+                let imgSmog = this.textures.get('smog_tex').getSourceImage();
+                let canvasSmog = this.textures.createCanvas('smog_soft', imgSmog.width, 60);
+                let ctxSmog = canvasSmog.getContext();
+                ctxSmog.drawImage(imgSmog, 0, 0, imgSmog.width, 60);
+                
+                let imgDataSmog = ctxSmog.getImageData(0, 0, imgSmog.width, 60);
+                let dataSmog = imgDataSmog.data;
+                for (let y = 0; y < 60; y++) {
+                    for (let x = 0; x < imgSmog.width; x++) {
+                        let i = (y * imgSmog.width + x) * 4;
+                        if (y < 30) {
+                            let alpha = y / 30; // 0 at top, 1 at y=30
+                            dataSmog[i+3] = Math.floor(dataSmog[i+3] * alpha);
+                        }
+                    }
+                }
+                ctxSmog.putImageData(imgDataSmog, 0, 0);
+                canvasSmog.refresh();
+
+                // Toxic Smog at bottom (Undulating tile sprite)
+                this.smog = this.add.tileSprite(400, 600, 800, 60, 'smog_soft').setOrigin(0.5, 1);
+                this.smog.setDepth(10);
+                this.smog.setAlpha(0.85);
+                this.smog.setTint(0x55ff33); // Toxic green
+
+                // --- ROPES GROUP ---
+                this.ropes = this.physics.add.group();
+                this.ropeLength = 1500;
+                
+                // Spawn initial ropes (Current and Next)
+                // Center rope where player starts
+                this.spawnRope(400, -500);
+                
+                // One optional rope to the side
+                this.lastRopeX = 400;
+                this.spawnNextRope();
+
+                // --- PLAYER ---
+                // Start attached to the middle rope
+                this.player = this.physics.add.sprite(400, 400, 'player_sprite');
+                this.player.setDepth(5); // Ensure player is drawn in front of ropes
+                this.player.setGravityY(1200);
+                
+                this.player.body.setSize(40, 100);
+                this.player.body.setOffset(44, 14);
+
+                this.anims.create({ key: 'cling', frames: this.anims.generateFrameNumbers('player_sprite', { start: 0, end: 0 }), frameRate: 10, repeat: -1 });
+                this.anims.create({ key: 'climb', frames: this.anims.generateFrameNumbers('player_sprite', { start: 1, end: 2 }), frameRate: 8, repeat: -1 });
+                this.anims.create({ key: 'jump', frames: this.anims.generateFrameNumbers('player_sprite', { start: 3, end: 3 }), frameRate: 10, repeat: -1 });
+                
+                this.player.anims.play('cling', true);
+
+                // State variables
+                this.attachedRope = null; // Reference to the rope the player is holding
+                this.lastRope = null;
+                this.lastJumpTime = 0;
+
+                // --- INPUT ---
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.spaceBar = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+                if (window.Coach) this.time.delayedCall(700, () => window.Coach.cue('JUMP!', 'Jump to climb'));
+                // Report score to the FIT-ARCADE hub HUD.
+                this.time.addEvent({ delay: 250, loop: true, callback: () => { if (window.MotionBridge) window.MotionBridge.reportScore(this.score || 0); } });
+            }
+
+            spawnNextRope() {
+                let direction = (Math.random() > 0.5) ? 1 : -1;
+                if (this.lastRopeX > 550) direction = -1;
+                if (this.lastRopeX < 250) direction = 1;
+                
+                let nextX = this.lastRopeX + (direction * 250); 
+                
+                // Spawn the hook far above the screen so they have a lot of rope to climb
+                // The bottom of the rope will appear near the top of the screen
+                let nextY = -this.ropeLength + 200; 
+                this.spawnRope(nextX, nextY);
+                this.lastRopeX = nextX;
+            }
+
+            spawnRope(x, y) {
+                // Since rope_texture.png is 32x512, we need a TileSprite to repeat it to 1500px
+                let rope = this.add.tileSprite(x, y, 32, this.ropeLength, 'rope_tex');
+                rope.setScale(0.375, 1); // Shrink the 32px rope down to exactly 12px width visually!
+                
+                this.physics.add.existing(rope);
+                this.ropes.add(rope);
+                
+                rope.setOrigin(0.5, 0); // Origin at top-center so y represents the hook position
+                rope.body.allowGravity = false;
+                rope.body.setVelocityY(this.climbSpeed);
+                // Maintain the body size relative to the scaled texture (32 * 0.375 = 12px world width)
+                rope.body.setSize(32, this.ropeLength);
+                
+                // Add the Hover Drone anchor at the top
+                let drone = this.add.image(x, y, 'drone_tex');
+                drone.setOrigin(0.5, 0.5);
+                rope.hookVisual = drone; // Save reference to move it with rope
+            }
+
+            update(time, delta) {
+
+
+                // Parallax Background
+                // The screen represents a camera constantly moving UPwards.
+                // Therefore, the background must constantly scroll DOWNwards (parallax matching the ropes).
+                this.bg.tilePositionY -= (this.climbSpeed * 0.4) * (delta / 1000) * (window.MOTION_DIFFICULTY || 1);
+                
+                // Horizontal parallax when leaping between ropes
+                if (Math.abs(this.player.body.velocity.x) > 0) {
+                    this.bg.tilePositionX += this.player.body.velocity.x * delta * 0.0002;
+                }
+
+                // Animate toxic smog
+                this.smog.tilePositionX += delta * 0.05;
+                this.smog.tilePositionY += Math.sin(time * 0.001) * 0.5;
+
+                // Check falling
+                if (this.player.y > 550) {
+                    this.score = Math.max(0, this.score - 50);
+                    this.scoreText.setText('Score: ' + this.score);
+                    this.cameras.main.flash(200, 255, 0, 0);
+                    
+                    // Attach to the nearest rope
+                    let ropes = this.ropes.getChildren();
+                    if (ropes.length > 0) {
+                        this.currentRope = ropes[0];
+                        this.player.x = this.currentRope.x;
+                        this.player.y = Math.max(100, this.currentRope.y - 100);
+                        this.player.body.setVelocity(0, 0);
+                        this.player.body.setGravityY(0);
+                        this.player.setTexture('climber_sprite_v2'); // Show holding
+                    } else {
+                        this.player.y = 100;
+                        this.player.body.setVelocity(0,0);
+                    }
+                }
+
+                // Procedural Rope Generation
+                this.ropes.getChildren().forEach(rope => {
+                    rope.body.setVelocityY(this.climbSpeed * (window.MOTION_DIFFICULTY || 1)); // Ensure speed (hub-driven difficulty)
+                    rope.hookVisual.y = rope.y; // Sync visual hook
+                    
+                    // Cleanup
+                    if (rope.y > 700) {
+                        rope.hookVisual.destroy();
+                        rope.destroy();
+                        
+                        // Whenever an old rope falls off screen, spawn a new one!
+                        // This guarantees there is always exactly 1 optional "next" rope.
+                        this.spawnNextRope();
+                    }
+                });
+
+                // --- PLAYER LOGIC ---
+                
+                // 1. If currently jumping (in the air), look for a rope to grab
+                if (this.attachedRope === null) {
+                    this.player.anims.play('jump', true);
+                    
+                    // Simple overlap check
+                    this.physics.overlap(this.player, this.ropes, (player, rope) => {
+                        // Prevent instantly re-grabbing the rope we just jumped off
+                        if (rope === this.lastRope && time - this.lastJumpTime < 300) return;
+                        
+                        // Only attach if player is somewhat overlapping the actual rope body
+                        // Rope extends from rope.y to rope.y + ropeLength
+                        if (player.y > rope.y && player.y < rope.y + this.ropeLength) {
+                            this.attachedRope = rope;
+                            this.player.setVelocity(0, 0);
+                            this.player.setGravityY(0); // Stop falling!
+                            this.player.x = rope.x; // Snap to rope
+                            this.player.anims.play('cling', true);
+                        }
+                    });
+                } 
+                // 2. If attached to a rope, handle climbing and leaping
+                else {
+                    // Check if rope was destroyed or we slid off the bottom of the rope
+                    if (!this.attachedRope.active || this.player.y > this.attachedRope.y + this.ropeLength) {
+                        this.attachedRope = null;
+                        this.player.setGravityY(1200);
+                        return;
+                    }
+
+                    // Move down with the rope by default
+                    let targetVelocityY = this.climbSpeed;
+                    let isClimbing = false;
+
+                    // Climb UP
+                    if (this.cursors.up.isDown || this.spaceBar.isDown) {
+                        // Prevent climbing past the hook (rope.y)
+                        if (this.player.y > this.attachedRope.y + 40) {
+                            targetVelocityY = -250; // Climb speed (relative to world, so effectively faster since rope moves down)
+                            isClimbing = true;
+                            this.player.anims.play('climb', true);
+                        }
+                    } 
+                    
+                    if (!isClimbing) {
+                        this.player.anims.play('cling', true);
+                    }
+
+                    this.player.setVelocityY(targetVelocityY);
+                    this.player.x = this.attachedRope.x; // Stay locked to rope
+
+                    // Coach: point to the nearest other rope to swing to, else climb.
+                    if (window.Coach) {
+                        let other = null;
+                        this.ropes.getChildren().forEach(r => { if (r !== this.attachedRope && r.active && (!other || Math.abs(r.x - this.player.x) < Math.abs(other.x - this.player.x))) other = r; });
+                        const want = (other && Math.abs(other.x - this.player.x) > 60) ? (other.x < this.player.x ? 'leanLeft' : 'leanRight') : 'jump';
+                        if (want !== this._coachMove) {
+                            this._coachMove = want;
+                            if (want === 'jump') window.Coach.cue('CLIMB!', 'Jump to climb');
+                            else if (want === 'leanLeft') window.Coach.cue('LEAN LEFT!', 'Lean left');
+                            else window.Coach.cue('LEAN RIGHT!', 'Lean right');
+                        }
+                    }
+
+                    // Leap LEFT
+                    if (Phaser.Input.Keyboard.JustDown(this.cursors.left)) {
+                        this.player.setFlipX(true);
+                        this.lastRope = this.attachedRope;
+                        this.lastJumpTime = time;
+                        this.attachedRope = null;
+                        this.player.setGravityY(1200);
+                        this.player.setVelocity(-400, -500); // Arc left
+                    }
+                    // Leap RIGHT
+                    else if (Phaser.Input.Keyboard.JustDown(this.cursors.right)) {
+                        this.player.setFlipX(false);
+                        this.lastRope = this.attachedRope;
+                        this.lastJumpTime = time;
+                        this.attachedRope = null;
+                        this.player.setGravityY(1200);
+                        this.player.setVelocity(400, -500); // Arc right
+                    }
+                }
+            }
+        }
+
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: document.body,
+            physics: {
+                default: 'arcade',
+                arcade: { gravity: { y: 0 }, debug: false }
+            },
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            scene: [PlayScene]
+        };
+
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>

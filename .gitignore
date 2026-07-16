@@ -14,3 +14,7 @@ data/
 .DS_Store
 .vscode/
 *.log
+
+# local-only settings + regeneratable artifacts
+.claude/settings.local.json
+journal-overleaf.zip

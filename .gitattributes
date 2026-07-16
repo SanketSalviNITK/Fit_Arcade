@@ -1,0 +1,9 @@
+# Normalize text line endings across platforms; mark known binaries.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.glb binary
+*.zip binary
+*.cls binary
+*.bst binary
+*.ico binary

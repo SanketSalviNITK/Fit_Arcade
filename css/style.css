@@ -1180,15 +1180,24 @@ body::before {
 }
 
 /* ---- Bolder header wordmark: gradient text + layered glow ---- */
+/* Brand wordmark: blocky electric-cyan face with a hard magenta offset shadow
+   + neon glow (Back-to-the-Future arcade look). Used everywhere "FIT-ARCADE" appears. */
 .arcade-title {
     font-size: 1.7rem;
-    background: linear-gradient(90deg, var(--primary-cyan), #ffffff 45%, var(--primary-neon-pink));
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
-    filter: drop-shadow(0 0 10px rgba(0, 240, 255, 0.55)) drop-shadow(0 0 20px rgba(255, 0, 127, 0.45));
+    font-family: var(--font-pixel);
+    color: var(--primary-cyan);
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    -webkit-text-fill-color: var(--primary-cyan);
+    letter-spacing: 2px;
+    filter: none;
     animation: none;
+    text-shadow:
+        3px 3px 0 var(--primary-neon-pink),        /* hard magenta offset (dual-tone) */
+        6px 6px 0 rgba(255, 0, 127, 0.35),          /* deeper magenta echo */
+        0 0 6px rgba(0, 240, 255, 0.9),             /* cyan neon glow */
+        0 0 18px rgba(0, 240, 255, 0.55);
 }
 .arcade-header { border-bottom-width: 2px; }
 

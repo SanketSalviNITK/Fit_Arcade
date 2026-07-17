@@ -1316,8 +1316,11 @@
             ctx.shadowBlur = 0;
 
             ctx.textAlign = 'center';
-            ctx.fillStyle = '#ff007f'; ctx.shadowColor = '#ff007f'; ctx.shadowBlur = 14;
-            ctx.font = pixel(30); ctx.fillText('FIT-ARCADE', cx, 74);
+            ctx.font = pixel(30);
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = '#ff007f'; ctx.fillText('FIT-ARCADE', cx + 3, 77);   // hard magenta offset
+            ctx.fillStyle = '#00f0ff'; ctx.shadowColor = '#00f0ff'; ctx.shadowBlur = 16;
+            ctx.fillText('FIT-ARCADE', cx, 74);                                    // electric cyan face + glow
             ctx.shadowBlur = 0;
             ctx.fillStyle = '#8b85a3'; ctx.font = pixel(11);
             ctx.fillText('MOTION WORKOUT COMPLETE', cx, 102);

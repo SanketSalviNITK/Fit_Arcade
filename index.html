@@ -116,9 +116,22 @@
                         </select>
                     </div>
                     <div class="slider-row">
+                        <label>HEIGHT cm <span style="color: var(--text-muted);">(optional)</span></label>
+                        <input type="number" id="input-height" class="neon-number" min="100" max="230" placeholder="—">
+                    </div>
+                    <div class="slider-row">
+                        <label>WEIGHT kg <span style="color: var(--text-muted);">(optional — better calories)</span></label>
+                        <input type="number" id="input-weight" class="neon-number" min="25" max="250" placeholder="—">
+                    </div>
+                    <div class="slider-row">
+                        <label>BMI</label>
+                        <span id="bmi-readout" style="font-family: var(--font-pixel); font-size: 0.72rem; color: var(--text-muted);">—</span>
+                    </div>
+                    <div class="slider-row">
                         <label>BASELINE PACE</label>
                         <span id="pace-readout" style="font-family: var(--font-pixel); font-size: 0.72rem; color: var(--primary-cyan); text-shadow: 0 0 8px var(--primary-cyan);">1.00x</span>
                     </div>
+                    <p style="font-size: 0.62rem; color: var(--text-muted); margin-top: 0.4rem; line-height: 1.5;">All optional — used only on this device to tune zones, pace and calorie estimates.</p>
                 </div>
 
                 <!-- Research Logging: OFF by default. Captures pose + physiology labels,
@@ -171,11 +184,12 @@
                     <!-- Game Launcher Grid -->
                     <div class="arcade-panel">
                         <div class="panel-header">
-                            <span>SELECT WORKOUT MODULE</span>
-                            <span style="font-size: 0.6rem; color: var(--accent-yellow);">7 SYSTEMS ONLINE</span>
+                            <span>OR PLAY A SINGLE GAME</span>
+                            <span style="font-size: 0.6rem; color: var(--accent-yellow);">7 GAMES</span>
                         </div>
                         
-                        <button onclick="startWorkoutFlow()" class="btn-arcade yellow" style="width: 100%; padding: 1rem; margin-bottom: 1.5rem; font-size: 1rem;">▶ START FULL-BODY CIRCUIT</button>
+                        <button onclick="startWorkoutFlow()" class="btn-arcade yellow" style="width: 100%; padding: 1rem; margin-bottom: 0.5rem; font-size: 1rem;">▶ START FULL-BODY CIRCUIT</button>
+                        <p style="text-align: center; font-size: 0.72rem; color: var(--text-muted); margin: 0 0 1.5rem; line-height: 1.5;">Recommended — a guided full-body session (warm-up → HIIT → cool-down). We'll calibrate first.</p>
                         
                         <!-- Embedded Launcher Grid using the new CSS classes -->
                         <div class="launcher-grid" style="grid-template-columns: repeat(2, 1fr); gap: 1.5rem; padding: 0;">
@@ -259,7 +273,7 @@
 
                         <div style="text-align: center;">
                             <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.2rem; line-height: 1.4;">
-                                Stand 5–8 feet away from the webcam until your head, arms, and hips are completely within frame.
+                                Calibrate once so the games learn your range of motion (~30s). Stand 5–8 feet back until your head, arms, and hips are all in frame.
                             </p>
                             <button id="btn-goto-calibration" class="btn-arcade yellow" style="width: 100%;" onclick="app.goToCalibration()">CALIBRATE CAMERA</button>
                         </div>
@@ -654,7 +668,7 @@
                 const s = (sec % 60).toString().padStart(2, '0');
                 return `${m}:${s}`;
             },
-            _kcal() { return Math.round(this._reps * 0.4 + (this._elapsed / 60) * 6); },
+            _kcal() { return estimateKcal(this._reps, this._elapsed, window.USER_WEIGHT_KG); },
             _render() {
                 document.getElementById('hud-reps').innerText = this._reps;
                 document.getElementById('hud-score').innerText = Number(this._score).toLocaleString();
@@ -721,6 +735,15 @@
         };
 
         function launchMVP(filename) {
+            // Gentle one-time nudge: an uncalibrated single-game launch offers calibration first.
+            if (typeof poseDetector !== 'undefined' && !(poseDetector.baselines && poseDetector.baselines.calibrated)
+                && !window.__calibNudged && typeof app !== 'undefined') {
+                window.__calibNudged = true;
+                if (confirm('For the most accurate motion control, calibrate first (~30s). Calibrate now?\n\n(Press Cancel to play without calibrating.)')) {
+                    app.goToCalibration();
+                    return;
+                }
+            }
             if (typeof app !== 'undefined') {
                 app.showScreen('game');
             } else {
@@ -1175,7 +1198,7 @@
         function recordWorkout(stats) {
             if (typeof Store === 'undefined' || !stats) return null;
             const avgHR = stats.hrCount ? Math.round(stats.hrSum / stats.hrCount) : 0;
-            const kcal = Math.round(stats.reps * 0.4 + (stats.elapsed / 60) * 6);
+            const kcal = estimateKcal(stats.reps, stats.elapsed, window.USER_WEIGHT_KG);
             const xpEarned = Math.round(stats.reps * 2 + kcal * 3 + (stats.games || 0) * 15);
 
             const prog = Store.getProgress();
@@ -1242,7 +1265,7 @@
             if (!stats) stats = { reps: 0, score: 0, elapsed: 0, hrSum: 0, hrCount: 0, hrPeak: 0, games: 0, program: WORKOUT_PROGRAM.name };
 
             const avgHR = stats.hrCount ? Math.round(stats.hrSum / stats.hrCount) : 0;
-            const kcal = Math.round(stats.reps * 0.4 + (stats.elapsed / 60) * 6);
+            const kcal = estimateKcal(stats.reps, stats.elapsed, window.USER_WEIGHT_KG);
             const mins = Math.floor(stats.elapsed / 60), secs = stats.elapsed % 60;
             const timeStr = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
 
@@ -1379,6 +1402,21 @@
         // BIOMETRIC PROFILE — personalize HR zones (maxHR = 220 - age) + effort model.
         // Persisted to localStorage; applied to the rPPG estimator.
         // ==========================================================
+        // ---- Calorie + BMI helpers (MET model; body mass refines the estimate) ----
+        function estimateKcal(reps, elapsedSec, weightKg) {
+            const w = weightKg || 70;                        // default body mass when weight unknown
+            const mins = Math.max(0, (elapsedSec || 0) / 60);
+            const rpm = mins > 0 ? reps / mins : 0;          // rep cadence -> intensity
+            const met = Math.max(3.5, Math.min(9, 3.5 + rpm * 0.35));  // ~3.5 (light) to 9 (vigorous)
+            return Math.round(met * w * ((elapsedSec || 0) / 3600));
+        }
+        function bmiClass(b) {
+            if (b < 18.5) return 'UNDERWEIGHT';
+            if (b < 25)   return 'HEALTHY';
+            if (b < 30)   return 'OVERWEIGHT';
+            return 'OBESE';
+        }
+
         (function initProfile() {
             let prof = {};
             try { prof = JSON.parse(localStorage.getItem('fitarcade.profile') || '{}'); } catch (e) {}
@@ -1386,9 +1424,14 @@
             const restEl = document.getElementById('input-resthr');
             const fitEl = document.getElementById('input-fitness');
             const paceEl = document.getElementById('pace-readout');
+            const hEl = document.getElementById('input-height');
+            const wEl = document.getElementById('input-weight');
+            const bmiEl = document.getElementById('bmi-readout');
             if (prof.age && ageEl) ageEl.value = prof.age;
             if (prof.restHR && restEl) restEl.value = prof.restHR;
             if (prof.fitness && fitEl) fitEl.value = prof.fitness;
+            if (prof.heightCm && hEl) hEl.value = prof.heightCm;
+            if (prof.weightKg && wEl) wEl.value = prof.weightKg;
 
             // Personal BASELINE pace from physical parameters. This is the reference speed
             // the game runs at for THIS player; the real-time effort controller then drifts
@@ -1404,16 +1447,27 @@
                 const age = ageEl ? parseInt(ageEl.value, 10) : 30;
                 const rest = restEl ? parseInt(restEl.value, 10) : 65;
                 const fit = fitEl ? fitEl.value : 'intermediate';
+                const heightCm = hEl && hEl.value ? parseInt(hEl.value, 10) : null;
+                const weightKg = wEl && wEl.value ? parseInt(wEl.value, 10) : null;
                 if (typeof rppgEstimator !== 'undefined') { rppgEstimator.setAge(age); rppgEstimator.setRestHR(rest); }
                 const basePace = computeBasePace(age, rest, fit);
                 if (typeof DifficultyController !== 'undefined') DifficultyController.basePace = basePace;
                 if (paceEl) paceEl.innerText = basePace.toFixed(2) + 'x';
-                try { localStorage.setItem('fitarcade.profile', JSON.stringify({ age, restHR: rest, fitness: fit })); } catch (e) {}
-                if (window.Cloud?.user) window.Cloud.saveProfile({ age, resting_hr: rest, fitness_level: fit, base_pace: basePace }); // cloud mirror (opt-in)
+
+                // BMI (only when both provided) + expose weight globally for the MET calorie model.
+                let bmi = null;
+                if (heightCm && weightKg) { const m = heightCm / 100; bmi = weightKg / (m * m); }
+                if (bmiEl) bmiEl.innerText = bmi ? bmi.toFixed(1) + '  ·  ' + bmiClass(bmi) : '—';
+                window.USER_WEIGHT_KG = weightKg || null;
+
+                try { localStorage.setItem('fitarcade.profile', JSON.stringify({ age, restHR: rest, fitness: fit, heightCm, weightKg })); } catch (e) {}
+                if (window.Cloud?.user) window.Cloud.saveProfile({ age, resting_hr: rest, fitness_level: fit, base_pace: basePace, height_cm: heightCm, weight_kg: weightKg }); // cloud mirror (opt-in)
             };
             if (ageEl) ageEl.addEventListener('change', apply);
             if (restEl) restEl.addEventListener('change', apply);
             if (fitEl) fitEl.addEventListener('change', apply);
+            if (hEl) hEl.addEventListener('change', apply);
+            if (wEl) wEl.addEventListener('change', apply);
             apply(); // apply saved/default values on load
             renderProgress(); // paint the home progress panel from saved data
             renderPlan();     // paint the today's-plan card
